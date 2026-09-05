@@ -1,0 +1,12 @@
+name: Still
+on:
+  pull_request:
+
+jobs:
+  drift-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./
+        with:
+          nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
