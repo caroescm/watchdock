@@ -7,13 +7,13 @@ Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkab
 ## M1 — Foundation (Day 1)
 **Done when:** a GitHub Action triggers on a PR, reads the diff, and successfully round-trips one call through NeMo Agent Toolkit to NIM.
 
-- [ ] Create public GitHub repo (`still` or final name), add MIT/Apache license, minimal README stub
-- [ ] Sign up at build.nvidia.com, get free NIM API key, confirm a raw test call works (curl or Python `openai` client pointed at NIM's base URL)
-- [ ] Install `nvidia-nat[langchain]` locally, work through the minimal "hello world" `tool_calling_agent` example from NeMo Agent Toolkit docs
-- [ ] Get one YAML-configured agent workflow calling a NIM-hosted model end-to-end (no tools yet, just prompt → response)
-- [ ] Scaffold `action.yml` for the GitHub Action (inputs: `NIM_API_KEY`; trigger: `pull_request`)
+- [x] ~~Create public GitHub repo~~ — deferred: building inside existing `GTCberlin` repo (private for now), will rename + make public before submission (M5)
+- [x] Sign up at build.nvidia.com, get free NIM API key, confirm a raw test call works — confirmed with `nvidia/nemotron-3.5-lightning-30b-a3b` via raw `openai` client
+- [x] Install `nvidia-nat[langchain]` locally — required switching from Python 3.14 to 3.12 venv (nvidia-nat doesn't support 3.14 yet)
+- [x] Get one YAML-configured agent workflow calling a NIM-hosted model end-to-end — `nat run` with a `react_agent` workflow hit NIM successfully (note: `react_agent`'s text-parsing output was messy with this reasoning model; real build uses `tool_calling_agent` instead, which sidesteps that)
+- [ ] Scaffold `action.yml` for the GitHub Action (inputs: `NVIDIA_API_KEY`; trigger: `pull_request`)
 - [ ] Action successfully checks out the PR and fetches the diff (`git diff` against base, or GitHub API) — print it to logs as proof
-- [ ] **Fallback checkpoint:** if NeMo Agent Toolkit setup isn't working by end of day, switch to raw `openai`-client calls against NIM and note the scope change in PRD Section 14 (risk already documented)
+- [x] **Fallback checkpoint:** not needed — NeMo Agent Toolkit is working, no fallback triggered
 
 ## M2 — Detection core (Day 2)
 **Done when:** the Detector agent can find one hand-crafted semantic-drift case in a test repo, for both a doc file and an instruction file.

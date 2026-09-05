@@ -1,0 +1,16 @@
+functions:
+  wikipedia_search:
+    _type: wiki_search
+    max_results: 2
+
+llms:
+  nim_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3.5-lightning-30b-a3b
+    temperature: 0.0
+
+workflow:
+  _type: react_agent
+  tool_names: [wikipedia_search]
+  llm_name: nim_llm
+  verbose: true
