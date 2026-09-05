@@ -5,6 +5,9 @@ on:
 jobs:
   drift-check:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: ./
