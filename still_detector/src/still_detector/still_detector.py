@@ -18,9 +18,10 @@ for _path in (_REPO_ROOT, _SRC_DIR):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from github_api import get_pr_context, get_diff  # noqa: E402
+from github_api import get_pr_context, get_diff, detect_pr_origin  # noqa: E402
 from targets import discover_targets  # noqa: E402
-from claims import extract_claims, check_claim_against_target  # noqa: E402
+from claims import extract_claims, check_claim_against_target, parse_findings  # noqa: E402
+from fixes import draft_fix, post_pr_suggestion, commit_fix_to_branch  # noqa: E402
 
 
 class StillDetectorFunctionConfig(FunctionBaseConfig, name="still_detector"):
@@ -37,9 +38,10 @@ async def still_detector_function(config: StillDetectorFunctionConfig, builder: 
 
     async def run_still_check(task: str) -> str:
         """
-        Runs the full Still drift-detection pipeline against the current PR: discovers
-        target files, fetches the diff, extracts claims, and checks each target file
-        for semantic drift, in that fixed order.
+        Runs the full Still pipeline against the current PR: discovers target files,
+        fetches the diff, extracts claims, checks each target for drift, and for
+        every real finding drafts a fix and delivers it — as a suggestion comment
+        for human-authored PRs, or a direct commit for agent-authored PRs.
         """
         repo, pr = get_pr_context()
         diff = get_diff(pr)
@@ -56,18 +58,44 @@ async def still_detector_function(config: StillDetectorFunctionConfig, builder: 
         if claims.strip().upper() == "NONE":
             return "No claims in docs/instruction files are affected by this diff."
 
-        report_lines = [f"PR #{pr.number}: {pr.title}", ""]
+        origin = detect_pr_origin(pr)
+        logger.info("PR origin: %s", origin)
+
+        report_lines = [f"PR #{pr.number}: {pr.title} (origin: {origin})", ""]
 
         for target_path in targets:
             full_path = os.path.join(_REPO_ROOT, target_path)
             with open(full_path) as f:
                 target_content = f.read()
 
-            result = check_claim_against_target(claims, target_path, target_content)
-            if result.strip().upper() != "NONE":
-                report_lines.append(f"=== {target_path} ===")
-                report_lines.append(result)
-                report_lines.append("")
+            check_result = check_claim_against_target(claims, target_path, target_content)
+            logger.info("Raw check_result for %s:\n%s", target_path, check_result)
+            findings = parse_findings(check_result)
+            logger.info("Parsed findings for %s: %s", target_path, findings)
+
+            if not findings:
+                continue
+
+            report_lines.append(f"=== {target_path} ===")
+
+            for finding in findings:
+                fix_text = draft_fix(target_path, finding["line"], finding["reason"])
+
+                if origin == "agent":
+                    delivery = commit_fix_to_branch(
+                        repo, pr, target_path, target_content, finding["line"], fix_text
+                    )
+                else:
+                    delivery = post_pr_suggestion(
+                        pr, target_path, target_content, finding["line"], fix_text
+                    )
+
+                report_lines.append(f"- [{finding.get('type', '?')}] {finding['line']}")
+                report_lines.append(f"  reason: {finding['reason']}")
+                report_lines.append(f"  fix: {fix_text}")
+                report_lines.append(f"  delivery: {delivery}")
+
+            report_lines.append("")
 
         if len(report_lines) == 2:
             return "No drift detected in any target file."

@@ -29,3 +29,35 @@ def get_diff(pr):
             "patch": file.patch,
         })
     return diff
+
+
+AGENT_TRAILER_PATTERNS = [
+    "co-authored-by: claude",
+    "co-authored-by: cursor",
+    "co-authored-by: github copilot",
+    "co-authored-by: codex",
+    "shipped-by:",
+]
+
+
+def detect_pr_origin_from_data(commit_messages, author_login=""):
+    """Pure logic, no API calls: returns 'agent' if commit messages or the
+    author login look like a known AI coding agent, else 'human'. Defaults
+    to 'human' whenever ambiguous — never guess 'agent'."""
+    for message in commit_messages:
+        lowered = message.lower()
+        for pattern in AGENT_TRAILER_PATTERNS:
+            if pattern in lowered:
+                return "agent"
+
+    if (author_login or "").lower().endswith("[bot]"):
+        return "agent"
+
+    return "human"
+
+
+def detect_pr_origin(pr):
+    """Reads a real PR's commits and author, returns 'agent' or 'human'."""
+    commit_messages = [c.commit.message for c in pr.get_commits()]
+    author_login = pr.user.login if pr.user else ""
+    return detect_pr_origin_from_data(commit_messages, author_login)

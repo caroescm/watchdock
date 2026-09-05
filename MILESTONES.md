@@ -25,19 +25,20 @@ Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkab
 - [x] Implement `check_claim_against_target` tool: one NIM call, claim + target file text → stale? quote + reason — `src/claims.py`, tested with a fake `AGENTS.md` correctly flagged "use `requests`" as semantic staleness while leaving the unrelated `pytest` line alone (minor: model still mentions unaffected lines as "N/A" instead of omitting — revisit during Day 4 prompt tuning if it causes comment noise)
 - [x] Build one hand-crafted test case in a scratch repo: a doc claim made false by a diff (e.g. README says a flag exists, diff removes it) — `test_check_readme.py`, correctly classified as `TYPE: broken reference`
 - [x] Build one hand-crafted test case: an instruction-file claim made *semantically* false (e.g. `AGENTS.md` says "use `requests`", diff switches to `httpx`) — `test_check.py`, correctly classified as `TYPE: semantic staleness` — this is the core differentiator, now proven working
-- [ ] Wire the above into the Detector agent's `tool_calling_agent` YAML workflow, confirm it flags both cases correctly
+- [x] Wire the above into a NAT workflow, confirm it runs end-to-end — built as a **deterministic NAT workflow** (`still_detector` package), not a `tool_calling_agent`: since the four steps always run in a fixed order, we chose reliability over free-form agent planning (see PRD note). Confirmed working via `nat run` against real PR #1, correctly returning "no targets found" for this repo
 
 ## M3 — Fix + delivery (Day 3)
 **Done when:** a full PR gets either a suggestion comment or an auto-commit, correctly chosen based on who authored it.
 
-- [ ] Implement `draft_fix` tool: one NIM call, stale line + reason → corrected text
-- [ ] Implement `post_pr_suggestion` tool: GitHub API call posting a PR comment with a suggestion block
-- [ ] Implement `detect_pr_origin` tool: parse commit trailers (`Co-Authored-By: Claude`, etc.) and known bot account names
-- [ ] Implement `commit_fix_to_branch` tool: writes the corrected file content and pushes a commit to the PR branch
-- [ ] Wire Fix-Writer agent's YAML workflow: route to suggestion-comment vs. auto-commit based on `detect_pr_origin` result
-- [ ] Default to comment mode when origin is ambiguous (never default to auto-commit) — confirm this explicitly with a test case
-- [ ] End-to-end test #1: open a real PR (as yourself) with a drift case → confirm comment + suggestion block appears and is clickable
-- [ ] End-to-end test #2: open a real PR with a `Co-Authored-By: Claude` trailer and the same kind of drift → confirm the fix lands as a direct commit instead
+- [x] Implement `draft_fix` tool: one NIM call, stale line + reason → corrected text — `src/fixes.py`, tested on the `requests`→`httpx` case, produced a clean correctly-styled fix
+- [x] Implement `post_pr_suggestion` tool: GitHub API call posting a PR comment with a suggestion block — `src/fixes.py`, uses PyGithub's native `as_suggestion=True`; confirmed live on real PR #1 with a correctly-formatted ` ```suggestion` block on the exact target line (with user's explicit go-ahead before posting, since this is the first tool that writes to GitHub rather than just reading)
+- [x] Implement `detect_pr_origin` tool: parse commit trailers (`Co-Authored-By: Claude`, etc.) and known bot account names — `src/github_api.py`, split into pure logic (`detect_pr_origin_from_data`, testable without API calls) + a thin real-data wrapper; tested 4 cases (human, Claude trailer, bot login, ambiguous-defaults-to-human) plus confirmed against real PR #1
+- [x] Implement `commit_fix_to_branch` tool: writes the corrected file content and pushes a commit to the PR branch — `src/fixes.py`, refuses to commit if the stale line doesn't match verbatim (no guessing); confirmed live on the `test-still-action` branch with user's explicit go-ahead, verified the actual file content updated correctly
+- [x] Wire routing logic: `still_detector.py` now runs the full pipeline end to end (targets → diff → claims → per-target check → per-finding draft_fix → route by `detect_pr_origin`) as one deterministic NAT workflow
+- [x] Default to comment mode when origin is ambiguous — already guaranteed by `detect_pr_origin_from_data`'s design (only returns "agent" on an explicit trailer/bot match, defaults to "human" otherwise), verified in the earlier `detect_pr_origin` test cases
+- [x] End-to-end test #1: real drift case (added `AGENTS.md` + a contradicting `app.py` using `httpx`) on a normal human commit → confirmed a real `` ```suggestion `` comment landed on the correct line of `AGENTS.md`
+- [x] End-to-end test #2: same drift, but PR now includes a commit with a `Co-Authored-By: Claude` trailer → confirmed origin flipped to "agent" and the fix landed as a **direct commit** instead (verified by reading the actual updated file content on the branch)
+- [x] Bonus: caught and fixed a real bug during testing — `parse_findings` crashed with `KeyError: 'reason'` when the model's response included an incomplete second finding block; fixed by only accepting findings with both `line` and `reason` present
 
 ## M4 — Benchmark (Day 4)
 **Done when:** you have a table of real numbers comparing three approaches, and you've used it to fix at least one prompt issue.

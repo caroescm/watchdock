@@ -30,6 +30,7 @@ Diff:
     return response.choices[0].message.content
 
 def check_claim_against_target(claims, target_path, target_content):
+    """One NIM call: does target_content still accurately describe the code, given claims?"""
     prompt = f"""You are checking whether a documentation or agent-instruction file is still accurate, given a set of claims about what a code change affected.
 
 Claims about what changed:
@@ -42,10 +43,11 @@ For each line in `{target_path}` that these claims make now inaccurate or contra
 - semantic staleness: the line is still syntactically fine but now describes something false
 - broken reference: the line points to something (a file, command, or symbol) that no longer exists at all
 
+Do NOT include lines that are unaffected — only report lines that are actually now wrong.
 If nothing in `{target_path}` is affected by these claims, respond with exactly: NONE
 
-Respond in this format for each finding:
-LINE: <exact quoted line>
+Respond in this format for each finding, with a blank line between findings:
+LINE: <exact quoted line, verbatim from the file above>
 TYPE: semantic staleness | broken reference
 REASON: <why it's now wrong>
 """
@@ -56,3 +58,34 @@ REASON: <why it's now wrong>
         temperature=0.0,
     )
     return response.choices[0].message.content
+
+
+def parse_findings(check_result):
+    """Parses check_claim_against_target's LINE:/TYPE:/REASON: text into a list
+    of {line, type, reason} dicts. Returns [] for a NONE response."""
+    if check_result.strip().upper() == "NONE":
+        return []
+
+    findings = []
+    current = {}
+    for raw_line in check_result.splitlines():
+        line = raw_line.strip()
+        if line.startswith("LINE:"):
+            if current.get("line") and current.get("reason"):
+                findings.append(current)
+            current = {"line": line[len("LINE:"):].strip()}
+        elif line.startswith("TYPE:"):
+            current["type"] = line[len("TYPE:"):].strip()
+        elif line.startswith("REASON:"):
+            current["reason"] = line[len("REASON:"):].strip()
+
+    # Only keep findings that have both a line and a reason — an incomplete
+    # block (e.g. the model didn't follow the format exactly) is dropped
+    # rather than crashing draft_fix downstream with a missing key.
+    if current.get("line") and current.get("reason"):
+        findings.append(current)
+
+    # Defensive filter: even though the prompt says not to, older responses
+    # sometimes still mention unaffected lines as "N/A" — drop those.
+    return [f for f in findings if "n/a" not in f.get("type", "").lower()
+            and "unaffected" not in f.get("type", "").lower()]
