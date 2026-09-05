@@ -1,4 +1,4 @@
-from src.github_api import get_pr_context, get_diff
+from github_api import get_pr_context, get_diff
 
 def main():
     repo, pr = get_pr_context()
