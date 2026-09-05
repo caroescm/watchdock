@@ -11,20 +11,20 @@ Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkab
 - [x] Sign up at build.nvidia.com, get free NIM API key, confirm a raw test call works — confirmed with `nvidia/nemotron-3.5-lightning-30b-a3b` via raw `openai` client
 - [x] Install `nvidia-nat[langchain]` locally — required switching from Python 3.14 to 3.12 venv (nvidia-nat doesn't support 3.14 yet)
 - [x] Get one YAML-configured agent workflow calling a NIM-hosted model end-to-end — `nat run` with a `react_agent` workflow hit NIM successfully (note: `react_agent`'s text-parsing output was messy with this reasoning model; real build uses `tool_calling_agent` instead, which sidesteps that)
-- [ ] Scaffold `action.yml` for the GitHub Action (inputs: `NVIDIA_API_KEY`; trigger: `pull_request`)
-- [ ] Action successfully checks out the PR and fetches the diff (`git diff` against base, or GitHub API) — print it to logs as proof
+- [x] Scaffold `action.yml` for the GitHub Action (inputs: `nvidia_api_key`, `github_token`; trigger: `pull_request`) — composite action, no Docker build needed
+- [x] Action successfully checks out the PR and fetches the diff via GitHub API (PyGithub) — required adding `permissions: pull-requests: read, contents: read` to the workflow job, since the default `GITHUB_TOKEN` doesn't have PR-read access without it
 - [x] **Fallback checkpoint:** not needed — NeMo Agent Toolkit is working, no fallback triggered
 
 ## M2 — Detection core (Day 2)
 **Done when:** the Detector agent can find one hand-crafted semantic-drift case in a test repo, for both a doc file and an instruction file.
 
-- [ ] Implement `discover_targets` tool: auto-detect `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**`
-- [ ] Implement `.still.yml` override parsing (targets/ignore lists)
-- [ ] Implement `get_diff` tool (wraps the Day 1 diff-fetching logic as a callable tool)
-- [ ] Implement `extract_claims` tool: one NIM call, diff → list of doc/instruction claims it could affect
-- [ ] Implement `check_claim_against_target` tool: one NIM call, claim + target file text → stale? quote + reason
-- [ ] Build one hand-crafted test case in a scratch repo: a doc claim made false by a diff (e.g. README says a flag exists, diff removes it)
-- [ ] Build one hand-crafted test case: an instruction-file claim made *semantically* false (e.g. `AGENTS.md` says "use `requests`", diff switches to `httpx`) — confirm this is caught, since it's the core differentiator
+- [x] Implement `discover_targets` tool: auto-detect `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` — `src/targets.py`, tested against this repo (empty-list case confirmed correct)
+- [x] Implement `.still.yml` override parsing (targets/ignore lists) — tested: explicit `targets:` overrides auto-detect, `ignore:` subtracts correctly
+- [x] Implement `get_diff` tool (wraps the Day 1 diff-fetching logic as a callable tool) — `src/github_api.py`, hit and fixed a `ModuleNotFoundError` from the `src.` import prefix (script execution puts `src/` itself on the path, not its parent), now passing
+- [x] Implement `extract_claims` tool: one NIM call, diff → list of doc/instruction claims it could affect — `src/claims.py`, tested with a `requests`→`httpx` fake diff; correctly flagged the "stated conventions" contradiction case that's our core differentiator
+- [x] Implement `check_claim_against_target` tool: one NIM call, claim + target file text → stale? quote + reason — `src/claims.py`, tested with a fake `AGENTS.md` correctly flagged "use `requests`" as semantic staleness while leaving the unrelated `pytest` line alone (minor: model still mentions unaffected lines as "N/A" instead of omitting — revisit during Day 4 prompt tuning if it causes comment noise)
+- [x] Build one hand-crafted test case in a scratch repo: a doc claim made false by a diff (e.g. README says a flag exists, diff removes it) — `test_check_readme.py`, correctly classified as `TYPE: broken reference`
+- [x] Build one hand-crafted test case: an instruction-file claim made *semantically* false (e.g. `AGENTS.md` says "use `requests`", diff switches to `httpx`) — `test_check.py`, correctly classified as `TYPE: semantic staleness` — this is the core differentiator, now proven working
 - [ ] Wire the above into the Detector agent's `tool_calling_agent` YAML workflow, confirm it flags both cases correctly
 
 ## M3 — Fix + delivery (Day 3)
