@@ -2,7 +2,7 @@
 *(working name — a GitHub Action that keeps docs and AI-agent instruction files honest)*
 
 **Contest:** NVIDIA GTC Berlin Golden Ticket Developer Contest
-**Author:** Carolina Escudero
+**Author:** Carolina Escudero <!-- test commit via commit_fix_to_branch, safe to revert -->
 
 ---
 
