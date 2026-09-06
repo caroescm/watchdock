@@ -141,6 +141,42 @@ under-optimized out of neglect, it's the result of repeatedly testing
   legitimate (correct, non-truncated) call taking ~19 minutes, so a short
   timeout would have killed a right answer.
 
+## Latency ideas considered and not built (with reasoning why)
+
+A further redesign was proposed and evaluated against what this investigation
+actually showed, rather than implemented on faith:
+
+- **Lexical target pre-filter** (skip targets with zero lexical overlap with
+  the diff before running expensive analysis): correctly reasoned, but
+  `still_detector.py` already checks all target files **concurrently** with
+  each other, not sequentially — so for the common case (1-3 target files)
+  this wouldn't reduce wall-clock time at all, only API cost. It would help
+  a repo with many (5+) target files approaching NIM's free-tier rate limit,
+  which is a narrow, not-yet-observed scenario.
+- **Send only relevant sections of a target file, not the whole file**: no
+  evidence this addresses the actual bottleneck. Every target file in this
+  benchmark is already small (20-35 lines); the worst latency we've measured
+  came from the model deliberating over a nuanced judgment call (the
+  truncation bug), not from processing too much input text. Untested and
+  speculative on a genuinely large real-world file, which this benchmark
+  doesn't contain.
+- **Progressive/sequential ensemble** (trust a confident first sample
+  immediately, escalate to more samples only on `NONE`/malformed output):
+  actually implemented and tested. Accuracy held (100% recall on the 3
+  hardest cases), but the implementation was structurally slower for any
+  case that escalates — it waited for sample 1 to fully finish *before*
+  starting the escalation samples, adding sequential time on top of the
+  original all-3-at-once design rather than saving any. A correct version
+  would need to fire all 3 samples simultaneously and return as soon as any
+  one gives a confident answer (a true "race"), which wasn't built given
+  time constraints. Reverted rather than shipped half-working.
+- **CI time budget with honest "incomplete" reporting** (bound the wait,
+  report confirmed findings plus "analysis incomplete, re-run for full
+  verification" instead of silently claiming completeness): the one idea
+  here that's actually sound and low-risk, since it changes reporting policy
+  rather than the model's reasoning. Not built due to time — a real,
+  concrete next step for anyone continuing this project.
+
 ## Honest limitations
 
 - **Small sample.** 9 cases, hand-authored by the project's own author. This

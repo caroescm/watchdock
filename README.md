@@ -99,6 +99,7 @@ This 100% wasn't the first result — it came from diagnosing and fixing a real 
 - No per-language AST parsing — Still reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
 - **Per-call latency is real, even after optimization.** Detection calls (thinking enabled, run as a 3x ensemble) typically take 1-10 minutes per target file in practice; target files run concurrently with each other, but this is still not an instant CI check. See `BENCHMARK.md` for the full latency investigation.
 - **API cost per PR is higher** than a single-call design, since the ensemble runs 3x the calls for the detection step in exchange for reliability.
+- **A bounded time budget with honest "incomplete" reporting** (post confirmed findings, flag remaining analysis as incomplete rather than silently timing out) is a concrete, low-risk next step for latency — see `BENCHMARK.md` for this and other latency ideas that were evaluated and not built, with the reasoning why.
 
 ## Testing this repo yourself
 

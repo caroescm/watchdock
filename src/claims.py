@@ -148,7 +148,6 @@ def check_claim_against_target_ensemble(claims, target_path, target_content, n=3
             lambda _: check_claim_against_target(claims, target_path, target_content),
             range(n),
         ))
-    executor.shutdown(wait=False)
 
     all_findings = [parse_findings(r) for r in raw_results]
     return _merge_findings(all_findings)
