@@ -4,3 +4,4 @@ __pycache__/
 *.egg-info/
 .claude/
 .pytest_cache/
+.serena/

@@ -171,6 +171,30 @@ def test_ensemble_raises_when_all_samples_fail():
             check_claim_against_target_ensemble("claims", "README.md", "content", n=3)
 
 
+def test_parse_findings_drops_placeholder_and_symbol_only_lines():
+    """Regression test from a real API run: one ensemble sample echoed the
+    prompt's format placeholder verbatim and another returned a bare `...`
+    as a finding — neither is a quotable line from any target file, and both
+    would otherwise reach draft_fix and post a nonsense suggestion."""
+    text = (
+        "LINE: <exact quoted line, verbatim from the file above>\n"
+        "TYPE: semantic staleness\n"
+        "REASON: echoed template\n"
+        "\n"
+        "LINE: ...\n"
+        "TYPE: semantic staleness\n"
+        "REASON: ellipsis only\n"
+        "\n"
+        "LINE: a real finding\n"
+        "TYPE: semantic staleness\n"
+        "REASON: really wrong\n"
+    )
+    findings = parse_findings(text)
+
+    assert len(findings) == 1
+    assert findings[0]["line"] == "a real finding"
+
+
 def test_parse_claims_none_response():
     assert parse_claims("NONE") == []
     assert parse_claims("none") == []
