@@ -10,7 +10,7 @@ Built on **NVIDIA NeMo Agent Toolkit** and a **NIM-hosted Nemotron model**, for 
 
 `AGENTS.md`-style files are now the memory layer autonomous coding agents (Claude Code, Cursor, Codex, RALPH-style loops) actually run on — not just documentation for humans. 2026 practitioner consensus is blunt about what happens when they drift: a stale instruction file can be *worse than no file at all*, actively misdirecting an agent and measurably hurting task completion. Notably, no coding agent — including Claude Code itself — auto-updates its own instruction file today; the documented best practice is still "update it manually after every major change."
 
-Existing tools each solve one narrow slice of this — deterministic checkers (Evidoc, config-drift-checker) can tell you a referenced path/command no longer exists, but can't catch a *semantic* contradiction where the text is still syntactically valid but now describes something false. Semantic tools (doc-drift, Mintlify Workflows, CodeRabbit) target human-facing docs only, with no notion of agent-instruction files. Nobody combines semantic reasoning, both target types, any-language support, and origin-aware delivery — see the full comparison in [PRD.md](PRD.md#12-competitive-differentiation-verified).
+Existing tools each solve one narrow slice of this — deterministic checkers (Evidoc, config-drift-checker) can tell you a referenced path/command no longer exists, but can't catch a *semantic* contradiction where the text is still syntactically valid but now describes something false. Semantic tools (doc-drift, Mintlify Workflows, CodeRabbit) target human-facing docs only, with no notion of agent-instruction files. Nobody combines semantic reasoning, both target types, any-language support, and origin-aware delivery — see the full comparison in [PRD.md](project-docs/PRD.md#12-competitive-differentiation-verified).
 
 ## How it works
 
@@ -76,7 +76,7 @@ nat run --config_file still_detector/src/still_detector/configs/config.yml --inp
 
 - **NVIDIA NeMo Agent Toolkit** (`nvidia-nat`) — the Still pipeline is registered as a NAT workflow (`still_detector/`), invoked via `nat run`, not a raw API wrapper.
 - **NVIDIA NIM** (build.nvidia.com) — hosts the reasoning model (`nvidia/nemotron-3.5-lightning-30b-a3b`), free-tier, OpenAI-compatible endpoint.
-- **Deterministic pipeline, not a free-planning agent** — the four steps (discover → extract claims → check → fix) always run in the same fixed order, so we built this as a NAT workflow function rather than a `tool_calling_agent` choosing its own order. See [PRD.md §7](PRD.md#7-nvidia-technology-usage) for the reasoning.
+- **Deterministic pipeline, not a free-planning agent** — the four steps (discover → extract claims → check → fix) always run in the same fixed order, so we built this as a NAT workflow function rather than a `tool_calling_agent` choosing its own order. See [PRD.md §7](project-docs/PRD.md#7-nvidia-technology-usage) for the reasoning.
 - Source layout: `src/` (core logic: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `nim_client.py`), `still_detector/` (the NAT workflow package wrapping it), `tests/` (pytest suite), `benchmark/` (eval harness — see below).
 
 ## Benchmark
@@ -91,16 +91,16 @@ Still-Bench compares three approaches on a self-built eval set: a deterministic 
 
 On the 3 cases specifically designed to be unsolvable by a deterministic checker: baseline 0%, single-prompt 67%, Still 100%.
 
-This 100% wasn't the first result — it came from diagnosing and fixing a real bug (the model getting stuck deliberating and running out of its thinking-token budget before emitting an answer) after an earlier optimization attempt for speed dropped recall to 71%. Full methodology, the complete optimization journey, and honest remaining limitations (small sample, demonstrated model nondeterminism at temperature=0, real per-call latency) are in [BENCHMARK.md](BENCHMARK.md) — worth reading, since the journey is more informative than the final table alone.
+This 100% wasn't the first result — it came from diagnosing and fixing a real bug (the model getting stuck deliberating and running out of its thinking-token budget before emitting an answer) after an earlier optimization attempt for speed dropped recall to 71%. Full methodology, the complete optimization journey, and honest remaining limitations (small sample, demonstrated model nondeterminism at temperature=0, real per-call latency) are in [BENCHMARK.md](project-docs/BENCHMARK.md) — worth reading, since the journey is more informative than the final table alone.
 
 ## Known limitations / future work
 
 - **Live, mid-session auto-update** (updating a file the instant an agent edits it, before any PR exists) is not built — this needs a local git hook or agent-tool hook, a meaningfully separate project. The obvious next step.
-- The full 20-case benchmark wasn't entirely run (9/20, chosen to include the highest-signal cases) — see `BENCHMARK.md` for what's outstanding.
+- The full 20-case benchmark wasn't entirely run (9/20, chosen to include the highest-signal cases) — see [`BENCHMARK.md`](project-docs/BENCHMARK.md) for what's outstanding.
 - No per-language AST parsing — Still reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
-- **Per-call latency is real, even after optimization.** Detection calls (thinking enabled, run as a 3x ensemble) typically take 1-10 minutes per target file in practice; target files run concurrently with each other, but this is still not an instant CI check. See `BENCHMARK.md` for the full latency investigation.
+- **Per-call latency is real, even after optimization.** Detection calls (thinking enabled, run as a 3x ensemble) typically take 1-10 minutes per target file in practice; target files run concurrently with each other, but this is still not an instant CI check. See [`BENCHMARK.md`](project-docs/BENCHMARK.md) for the full latency investigation.
 - **API cost per PR is higher** than a single-call design, since the ensemble runs 3x the calls for the detection step in exchange for reliability.
-- **A bounded time budget with honest "incomplete" reporting** (post confirmed findings, flag remaining analysis as incomplete rather than silently timing out) is a concrete, low-risk next step for latency — see `BENCHMARK.md` for this and other latency ideas that were evaluated and not built, with the reasoning why.
+- **A bounded time budget with honest "incomplete" reporting** (post confirmed findings, flag remaining analysis as incomplete rather than silently timing out) is a concrete, low-risk next step for latency — see [`BENCHMARK.md`](project-docs/BENCHMARK.md) for this and other latency ideas that were evaluated and not built, with the reasoning why.
 
 ## Testing this repo yourself
 
