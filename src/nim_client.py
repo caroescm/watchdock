@@ -1,5 +1,8 @@
+import logging
 import os
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
 
 MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
@@ -26,6 +29,17 @@ _MAX_RETRIES = 3
 # headroom. Mechanical (thinking-off) calls need far less room.
 _MAX_TOKENS_THINKING = 24000
 _MAX_TOKENS_FAST = 800
+
+# A real triggered run got a clean 200 OK, streamed for 10 minutes, then
+# NVIDIA's server itself returned "Internal server error" mid-stream. The
+# client's own max_retries never saw it: that retry logic only covers a
+# failure on the *initial* request, before a 200 has been returned and
+# streaming has begun. A mid-stream failure needs the whole call redone
+# from scratch, which nothing here was doing — extract_claims in
+# particular has no ensemble to fall back on, so its one call failing
+# killed the entire run instantly. Retrying the whole streamed call is
+# the only option (a partial stream can't be resumed).
+_MAX_STREAM_RETRIES = 2
 
 
 def get_client():
@@ -62,16 +76,24 @@ def chat_completion(prompt, enable_thinking=True):
     `.message.content` already returned in the non-streaming version).
     """
     client = get_client()
-    stream = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-        max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
-        extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
-        stream=True,
-    )
-    chunks = []
-    for chunk in stream:
-        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-            chunks.append(chunk.choices[0].delta.content)
-    return "".join(chunks)
+    last_error = None
+    for attempt in range(_MAX_STREAM_RETRIES):
+        try:
+            stream = client.chat.completions.create(
+                model=MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
+                extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
+                stream=True,
+            )
+            chunks = []
+            for chunk in stream:
+                if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+                    chunks.append(chunk.choices[0].delta.content)
+            return "".join(chunks)
+        except Exception as e:
+            last_error = e
+            logger.warning("chat_completion attempt %d/%d failed mid-stream",
+                            attempt + 1, _MAX_STREAM_RETRIES, exc_info=True)
+    raise last_error
