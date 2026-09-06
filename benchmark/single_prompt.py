@@ -7,7 +7,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-from nim_client import get_client, MODEL  # noqa: E402
+from nim_client import chat_completion  # noqa: E402
 
 
 def single_prompt_check(diff, target_path, target_content):
@@ -28,10 +28,4 @@ LINE: <exact quoted line>
 TYPE: semantic staleness | broken reference
 REASON: <why it's wrong>
 """
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-    )
-    return response.choices[0].message.content
+    return chat_completion(prompt)
