@@ -32,7 +32,7 @@ def test_still_yml_overrides_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
     (tmp_path / "CONTRIBUTING.md").write_text("# contributing")
-    (tmp_path / ".still.yml").write_text(
+    (tmp_path / ".still-config.yml").write_text(
         "targets:\n  - CONTRIBUTING.md\n"
     )
 
@@ -45,7 +45,7 @@ def test_still_yml_overrides_auto_detect(tmp_path):
 def test_still_yml_ignore_subtracts_from_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
-    (tmp_path / ".still.yml").write_text(
+    (tmp_path / ".still-config.yml").write_text(
         "ignore:\n  - README.md\n"
     )
 
@@ -56,7 +56,7 @@ def test_still_yml_ignore_subtracts_from_auto_detect(tmp_path):
 
 
 def test_still_yml_targets_pointing_at_nonexistent_file_is_dropped(tmp_path):
-    (tmp_path / ".still.yml").write_text(
+    (tmp_path / ".still-config.yml").write_text(
         "targets:\n  - DOES_NOT_EXIST.md\n"
     )
 

@@ -16,7 +16,7 @@ Existing tools each solve one narrow slice of this — deterministic checkers (E
 
 1. A maintainer adds one workflow file to their repo, referencing this Action, and sets a free `NVIDIA_API_KEY` secret.
 2. On every PR, Still:
-   - **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.still.yml`)
+   - **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.still-config.yml`)
    - **Extracts claims** from the diff — what could this change make wrong?
    - **Checks each target file** for lines those claims now contradict, distinguishing *semantic staleness* (still valid-looking text, now wrong) from a *broken reference* (something that flat-out no longer exists)
    - **Drafts a fix** for each real finding
