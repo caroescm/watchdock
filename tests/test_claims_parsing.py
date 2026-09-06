@@ -1,4 +1,8 @@
-from claims import parse_findings, format_diff, _is_relevant, extract_claims, _merge_findings
+from unittest.mock import patch
+
+import pytest
+
+from claims import parse_findings, format_diff, _is_relevant, extract_claims, _merge_findings, check_claim_against_target_ensemble
 
 
 def test_parse_findings_none_response():
@@ -131,3 +135,28 @@ def test_merge_findings_keeps_distinct_findings_from_different_samples():
 
 def test_merge_findings_empty_input():
     assert _merge_findings([[], [], []]) == []
+
+
+def test_ensemble_degrades_gracefully_when_one_sample_fails():
+    """Regression test for a real triggered run: all 3 ensemble samples hit
+    a connection error, the client's single retry didn't recover, and the
+    whole check crashed with nothing posted. A dropped sample should be
+    treated as a missing vote, not a fatal error, as long as at least one
+    sample succeeds."""
+    with patch("claims.check_claim_against_target", side_effect=[
+        ConnectionError("boom"),
+        "LINE: a real finding\nTYPE: semantic staleness\nREASON: r\n",
+        "NONE",
+    ]):
+        findings = check_claim_against_target_ensemble("claims", "README.md", "content", n=3)
+
+    assert len(findings) == 1
+    assert findings[0]["line"] == "a real finding"
+
+
+def test_ensemble_raises_when_all_samples_fail():
+    """If every sample fails there's genuinely no result to report — this
+    must raise rather than silently behave like a clean 'no drift' NONE."""
+    with patch("claims.check_claim_against_target", side_effect=ConnectionError("boom")):
+        with pytest.raises(RuntimeError, match="README.md"):
+            check_claim_against_target_ensemble("claims", "README.md", "content", n=3)

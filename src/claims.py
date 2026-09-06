@@ -1,7 +1,10 @@
 import fnmatch
+import logging
 from concurrent.futures import ThreadPoolExecutor
 
 from nim_client import chat_completion
+
+logger = logging.getLogger(__name__)
 
 # File patterns that are never informative for doc/instruction drift — they
 # add token volume to extract_claims without ever being the kind of change
@@ -142,12 +145,29 @@ def check_claim_against_target_ensemble(claims, target_path, target_content, n=3
     testing (its failure landed at 317.7s, just past the 300s cap tried).
     Waiting for all n samples costs more time but that latency is doing
     real work, not padding — same lesson as the thinking-mode finding.
+
+    A real triggered run hit a connection error on all 3 samples at once
+    (the shared client's single retry also failed) and crashed the entire
+    check with no result posted at all, for what should have been an
+    isolated network blip. A dropped sample is now treated as a missing
+    vote, not a fatal error — only raise if every sample fails, since at
+    that point there's genuinely no result to report rather than one to
+    degrade gracefully from.
     """
     with ThreadPoolExecutor(max_workers=n) as executor:
-        raw_results = list(executor.map(
-            lambda _: check_claim_against_target(claims, target_path, target_content),
-            range(n),
-        ))
+        futures = [
+            executor.submit(check_claim_against_target, claims, target_path, target_content)
+            for _ in range(n)
+        ]
+        raw_results = []
+        for future in futures:
+            try:
+                raw_results.append(future.result())
+            except Exception:
+                logger.warning("Ensemble sample for %s failed and was dropped", target_path, exc_info=True)
+
+    if not raw_results:
+        raise RuntimeError(f"All {n} ensemble samples failed for {target_path}; no result to report")
 
     all_findings = [parse_findings(r) for r in raw_results]
     return _merge_findings(all_findings)
