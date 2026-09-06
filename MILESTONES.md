@@ -57,11 +57,14 @@ Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkab
 ## M5 — Ship (Day 5)
 **Done when:** the entry is submitted with #NVIDIAGTC and a judge tag, before the Sep 10 deadline.
 
+- [x] Add `LICENSE` (MIT) — was missing entirely until now, required to honestly call this "open source"
+- [x] Add a formal `tests/` suite (pytest) covering everything testable without a live API key — target discovery + `.still.yml` override, PR-origin detection, findings parsing (including a regression test for the M3 `KeyError` bug), the deterministic baseline's logic, and `commit_fix_to_branch`'s safety property (never guess, refuse on no exact match). 28/28 passing in <1s.
+- [x] **Found and fixed a real gap while writing docs**: `action.yml` was still wired to the old M1 placeholder script (just prints the diff), not the real `still_detector` pipeline — meaning the actual shipped Action had never run the real logic, only local `nat run` testing had. Fixed to install `still_detector` and invoke it via `nat run`. **Still needs a real triggered-Action verification, not just local testing** — user pushing this themselves to confirm.
+- [x] Write the final README: problem, how it works, install instructions (adopter quick-start + local dev), competitive differentiation, benchmark summary, known limitations/future work
 - [ ] Run the bonus model-comparison (swap `llm_name` between two NIM-catalog models on the same benchmark)
-- [ ] Write the final README: problem, how it works, install instructions, competitive comparison table (PRD Section 12), benchmark results, "future work" section naming the live/mid-session update idea
 - [ ] Record demo video (30-60s): show both delivery paths (comment vs. auto-commit), explain the RALPH-loop stakes, first 10 seconds state the problem clearly
 - [ ] **Verify which judge to tag** — check Chorouk Malmoum's and Johnny Nunez's actual recent posts for their specific stated requirements before picking (open item from PRD Section 14)
-- [ ] Publish the repo publicly, confirm license file present, confirm someone else could clone + run it from the README alone
+- [ ] Publish the repo publicly, confirm someone else (not just us) could clone + run it from the README alone
 - [ ] Post the submission (video/link) on the chosen platform, tag the chosen judge, hashtag #NVIDIAGTC
 - [ ] Double check submission lands before the Entry Period ends (Sep 10, 2026)
 

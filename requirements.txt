@@ -1,3 +1,4 @@
 PyGithub
 pyyaml
 openai
+pytest
