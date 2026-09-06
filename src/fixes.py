@@ -1,4 +1,4 @@
-from nim_client import get_client, MODEL
+from nim_client import chat_completion
 
 
 def draft_fix(target_path, stale_line, reason):
@@ -16,14 +16,10 @@ reflects the current code. Keep the same style, tone, and formatting conventions
 original. Respond with ONLY the corrected text — no explanation, no quotes, no markdown
 fences around it.
 """
-
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.0,
-    )
-    return response.choices[0].message.content.strip()
+    # Mechanical rewrite, not a judgment call — the hard decision (is this
+    # line actually wrong, and why) was already made by check_claim_against_
+    # target. Safe to run fast/thinking-off here.
+    return chat_completion(prompt, enable_thinking=False).strip()
 
 
 def _find_line_number(file_content, stale_line):

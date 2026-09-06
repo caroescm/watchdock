@@ -80,21 +80,26 @@ nat run --config_file still_detector/src/still_detector/configs/config.yml --inp
 
 ## Benchmark
 
-Still-Bench compares three approaches on a self-built eval set: a deterministic baseline (mimicking Evidoc), a single-prompt LLM call, and Still's full pipeline. On the 3 cases specifically designed to be unsolvable by a deterministic checker:
+Still-Bench compares three approaches on a self-built eval set: a deterministic baseline (mimicking Evidoc), a single-prompt LLM call, and Still's full pipeline (`extract_claims` + a 3x parallel ensemble of `check_claim_against_target`, unioned). Final result on all 9 cases run:
 
-| Approach | Recall on baseline-proof cases |
-|---|---|
-| Deterministic baseline | 0% |
-| Single-prompt LLM | 67% |
-| **Still (full pipeline)** | **100%** |
+| Approach | Recall | Precision |
+|---|---|---|
+| Deterministic baseline | 57% | 1.00 |
+| Single-prompt LLM | 71% | 1.00 |
+| **Still (full pipeline)** | **100%** | **1.00** |
 
-Full methodology, all results, and honest limitations (small sample, observed run-to-run variance, one latency outlier) are in [BENCHMARK.md](BENCHMARK.md).
+On the 3 cases specifically designed to be unsolvable by a deterministic checker: baseline 0%, single-prompt 67%, Still 100%.
+
+This 100% wasn't the first result — it came from diagnosing and fixing a real bug (the model getting stuck deliberating and running out of its thinking-token budget before emitting an answer) after an earlier optimization attempt for speed dropped recall to 71%. Full methodology, the complete optimization journey, and honest remaining limitations (small sample, demonstrated model nondeterminism at temperature=0, real per-call latency) are in [BENCHMARK.md](BENCHMARK.md) — worth reading, since the journey is more informative than the final table alone.
 
 ## Known limitations / future work
 
 - **Live, mid-session auto-update** (updating a file the instant an agent edits it, before any PR exists) is not built — this needs a local git hook or agent-tool hook, a meaningfully separate project. The obvious next step.
 - The full 20-case benchmark wasn't entirely run (9/20, chosen to include the highest-signal cases) — see `BENCHMARK.md` for what's outstanding.
 - No per-language AST parsing — Still reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
+- **Per-call latency is real, even after optimization.** Detection calls (thinking enabled, run as a 3x ensemble) typically take 1-10 minutes per target file in practice; target files run concurrently with each other, but this is still not an instant CI check. See `BENCHMARK.md` for the full latency investigation.
+- **API cost per PR is higher** than a single-call design, since the ensemble runs 3x the calls for the detection step in exchange for reliability.
+- **A bounded time budget with honest "incomplete" reporting** (post confirmed findings, flag remaining analysis as incomplete rather than silently timing out) is a concrete, low-risk next step for latency — see `BENCHMARK.md` for this and other latency ideas that were evaluated and not built, with the reasoning why.
 
 ## Testing this repo yourself
 
