@@ -2,7 +2,6 @@
 *(working name — a GitHub Action that keeps docs and AI-agent instruction files honest)*
 
 **Contest:** NVIDIA GTC Berlin Golden Ticket Developer Contest
-**Entry deadline:** September 10, 2026
 **Author:** Carolina Escudero
 
 ---

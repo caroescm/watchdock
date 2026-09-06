@@ -1,0 +1,26 @@
+name: 'Still'
+description: 'Catches semantic drift in docs and AI-agent instruction files on every PR'
+inputs:
+  nvidia_api_key:
+    description: 'NVIDIA NIM API key'
+    required: true
+  github_token:
+    description: 'GitHub token for reading PRs and posting results'
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r ${{ github.action_path }}/requirements.txt
+    - name: Run Still
+      shell: bash
+      env:
+        NVIDIA_API_KEY: ${{ inputs.nvidia_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: python ${{ github.action_path }}/src/main.py
