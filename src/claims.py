@@ -159,7 +159,21 @@ def parse_findings(check_result):
     # Defensive filter: even though the prompt says not to, older responses
     # sometimes still mention unaffected lines as "N/A" — drop those.
     return [f for f in findings if "n/a" not in f.get("type", "").lower()
-            and "unaffected" not in f.get("type", "").lower()]
+            and "unaffected" not in f.get("type", "").lower()
+            and not _is_junk_line(f["line"])]
+
+
+def _is_junk_line(line):
+    """True for 'lines' that can't be real quotes from a target file: an
+    echoed format placeholder (a real ensemble sample once returned the
+    literal `<exact quoted line, verbatim from the file above>`), or content
+    with no alphanumeric characters at all (a real sample once returned a
+    bare `...`). These would otherwise flow into draft_fix and produce a
+    nonsense suggestion on the PR."""
+    stripped = line.strip()
+    if stripped.startswith("<") and stripped.endswith(">"):
+        return True
+    return not any(ch.isalnum() for ch in stripped)
 
 
 def _normalize(text):

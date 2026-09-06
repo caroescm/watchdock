@@ -21,9 +21,10 @@ Existing tools each solve one narrow slice of this — deterministic checkers (E
    - **Checks each target file** for lines those claims now contradict, distinguishing *semantic staleness* (still valid-looking text, now wrong) from a *broken reference* (something that flat-out no longer exists)
    - **Drafts a fix** for each real finding
    - **Detects PR origin** — human or AI agent (via commit trailers like `Co-Authored-By: Claude`)
-   - **Delivers the fix**: a suggestion-block comment for a human to accept with one click, or a direct commit into the same branch for an agent-authored PR — still reviewed by a human before merge either way
+   - **Delivers the fix**: a suggestion-block comment (with the finding type and reason) for a human to accept with one click, or a direct commit into the same branch plus an explanatory comment for an agent-authored PR — still reviewed by a human before merge either way
+   - **Maintains one summary comment** on the PR — what was checked, every claim extracted, every fix delivered — created on the first run and edited in place on re-runs, so it never piles up
 
-If nothing is affected, Still posts nothing — no noise on every PR.
+If nothing is affected, the summary comment simply reports a green "no drift detected" — one tidy comment per PR, never a pile.
 
 ## Quick start (for adopters)
 
@@ -38,7 +39,7 @@ jobs:
   drift-check:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      pull-requests: write
       contents: write
     steps:
       - uses: actions/checkout@v4
