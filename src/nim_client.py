@@ -8,7 +8,15 @@ MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 # so the timeout has to sit comfortably above that rather than fail a
 # legitimate slow-but-right answer.
 _TIMEOUT_SECONDS = 1500
-_MAX_RETRIES = 1
+
+# Two separate triggered runs both hit a connection reset around the
+# 4-4.5 minute mark of a call — once on a single extract_claims call
+# (recovered on its one retry), once on all 3 parallel ensemble calls at
+# once (didn't recover, crashed the whole run). Same timing both times,
+# with and without concurrency, so this looks like a real recurring
+# reset rather than one-off noise. Raised from 1 so a single reset isn't
+# one unlucky retry away from taking down the whole ensemble again.
+_MAX_RETRIES = 3
 
 # With thinking enabled, a real diagnosed failure showed the model correctly
 # reasoning through a case in detail, then running out of budget mid-thought
@@ -40,13 +48,30 @@ def chat_completion(prompt, enable_thinking=True):
     4x did not recover the misses). Thinking mode costs real latency but is
     doing real reasoning work; only opt out per call site for genuinely
     mechanical tasks (see fixes.draft_fix) where that trade is safe.
+
+    Streams the response rather than waiting for one non-streaming reply.
+    Two triggered runs both saw a *non-streaming* call get its connection
+    reset by something between here and NVIDIA's server after ~4.3-4.6
+    minutes of silence, every retry included — consistent with an
+    intermediate timeout that kills a connection with no bytes flowing.
+    A direct replay of the exact same failing call, streamed, ran a full
+    411s with zero disconnects and a complete, correct answer: bytes were
+    still arriving the whole time (thinking-mode tokens land in a separate
+    reasoning field, not `content`, so nothing above needs to change to
+    read them — only `content` deltas are accumulated, same as what
+    `.message.content` already returned in the non-streaming version).
     """
     client = get_client()
-    response = client.chat.completions.create(
+    stream = client.chat.completions.create(
         model=MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.0,
         max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
         extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
+        stream=True,
     )
-    return response.choices[0].message.content
+    chunks = []
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            chunks.append(chunk.choices[0].delta.content)
+    return "".join(chunks)
