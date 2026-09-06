@@ -6,8 +6,8 @@ jobs:
   drift-check:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
-      contents: read
+      pull-requests: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./

@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 from cases import CASES  # noqa: E402
 from baseline import deterministic_check  # noqa: E402
 from single_prompt import single_prompt_check  # noqa: E402
-from claims import extract_claims, check_claim_against_target_ensemble, parse_findings  # noqa: E402
+from claims import extract_claims, parse_claims, check_claims_against_target, parse_findings  # noqa: E402
 
 
 def normalize(text):
@@ -81,13 +81,13 @@ def run(case_ids=None):
         results["single_prompt"].append(score)
         print(f"  single_prompt: {score} ({time.time()-t0:.1f}s)", flush=True)
 
-        # --- Full pipeline (extract_claims + 3x-ensemble check, unioned) ---
+        # --- Full pipeline (extract_claims -> per-claim 3x-ensemble checks, unioned) ---
         t0 = time.time()
-        claims = extract_claims(diff)
-        if claims.strip().upper() == "NONE":
+        claims = parse_claims(extract_claims(diff))
+        if not claims:
             full_findings = []
         else:
-            full_findings = check_claim_against_target_ensemble(claims, target_path, target_content)
+            full_findings = check_claims_against_target(claims, target_path, target_content)
         score = score_case(case, full_findings)
         results["full_pipeline"].append(score)
         print(f"  full_pipeline: {score} ({time.time()-t0:.1f}s)", flush=True)

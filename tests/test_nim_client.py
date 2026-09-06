@@ -1,3 +1,5 @@
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -63,3 +65,38 @@ def test_chat_completion_ignores_chunks_with_no_content():
         result = nim_client.chat_completion("prompt")
 
     assert result == "real answer"
+
+
+def test_chat_completion_caps_concurrent_requests():
+    """Per-claim fan-out can request (claims x ensemble x targets) calls at
+    once; the semaphore must bound how many streams are actually open
+    simultaneously while still letting every call complete."""
+    counter_lock = threading.Lock()
+    active = {"now": 0, "max": 0}
+
+    def fake_create(**kwargs):
+        with counter_lock:
+            active["now"] += 1
+            active["max"] = max(active["max"], active["now"])
+        time.sleep(0.02)
+        with counter_lock:
+            active["now"] -= 1
+        return iter([_fake_chunk("ok")])
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.side_effect = fake_create
+    results = []
+
+    with patch("nim_client.get_client", return_value=fake_client), \
+         patch.object(nim_client, "_request_slots", threading.BoundedSemaphore(2)):
+        threads = [
+            threading.Thread(target=lambda: results.append(nim_client.chat_completion("p")))
+            for _ in range(6)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+    assert results == ["ok"] * 6
+    assert active["max"] <= 2

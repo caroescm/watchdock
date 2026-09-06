@@ -2,7 +2,16 @@ from unittest.mock import patch
 
 import pytest
 
-from claims import parse_findings, format_diff, _is_relevant, extract_claims, _merge_findings, check_claim_against_target_ensemble
+from claims import (
+    parse_findings,
+    parse_claims,
+    format_diff,
+    _is_relevant,
+    extract_claims,
+    _merge_findings,
+    check_claim_against_target_ensemble,
+    check_claims_against_target,
+)
 
 
 def test_parse_findings_none_response():
@@ -160,3 +169,112 @@ def test_ensemble_raises_when_all_samples_fail():
     with patch("claims.check_claim_against_target", side_effect=ConnectionError("boom")):
         with pytest.raises(RuntimeError, match="README.md"):
             check_claim_against_target_ensemble("claims", "README.md", "content", n=3)
+
+
+def test_parse_findings_drops_placeholder_and_symbol_only_lines():
+    """Regression test from a real API run: one ensemble sample echoed the
+    prompt's format placeholder verbatim and another returned a bare `...`
+    as a finding — neither is a quotable line from any target file, and both
+    would otherwise reach draft_fix and post a nonsense suggestion."""
+    text = (
+        "LINE: <exact quoted line, verbatim from the file above>\n"
+        "TYPE: semantic staleness\n"
+        "REASON: echoed template\n"
+        "\n"
+        "LINE: ...\n"
+        "TYPE: semantic staleness\n"
+        "REASON: ellipsis only\n"
+        "\n"
+        "LINE: a real finding\n"
+        "TYPE: semantic staleness\n"
+        "REASON: really wrong\n"
+    )
+    findings = parse_findings(text)
+
+    assert len(findings) == 1
+    assert findings[0]["line"] == "a real finding"
+
+
+def test_parse_claims_none_response():
+    assert parse_claims("NONE") == []
+    assert parse_claims("none") == []
+    assert parse_claims("  NONE  ") == []
+    assert parse_claims("") == []
+
+
+def test_parse_claims_multiple_blocks():
+    text = (
+        "CLAIM: The HTTP client changed from requests to httpx, contradicting any doc that names requests.\n"
+        "\n"
+        "CLAIM: The `--verbose` flag was removed from the CLI.\n"
+    )
+    claims = parse_claims(text)
+
+    assert len(claims) == 2
+    assert claims[0].startswith("The HTTP client changed")
+    assert claims[1] == "The `--verbose` flag was removed from the CLI."
+
+
+def test_parse_claims_folds_wrapped_continuation_lines():
+    """A claim the model wraps across multiple lines must stay one claim,
+    not be truncated at the first newline."""
+    text = (
+        "CLAIM: The default config key `timeout` was renamed to\n"
+        "`request_timeout` in config.yml, so docs naming `timeout` are stale.\n"
+        "\n"
+        "CLAIM: second claim\n"
+    )
+    claims = parse_claims(text)
+
+    assert len(claims) == 2
+    assert "renamed to `request_timeout`" in claims[0]
+
+
+def test_parse_claims_falls_back_to_whole_output_when_format_ignored():
+    """If the model ignores the CLAIM: format entirely, the whole output must
+    become a single claim rather than silently parsing to [] — [] means
+    'no drift', which would be a false all-clear caused by a format miss."""
+    freeform = "The change swaps requests for httpx which affects the README's install section."
+    claims = parse_claims(freeform)
+
+    assert claims == [freeform]
+
+
+def test_check_claims_against_target_unions_findings_across_claims():
+    """Each claim runs its own ensemble; findings from different claims must
+    be unioned (and deduped) in the final result."""
+    def fake_check(claim, target_path, target_content):
+        if "first" in claim:
+            return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
+        return "LINE: stale line B\nTYPE: broken reference\nREASON: r2\n"
+
+    with patch("claims.check_claim_against_target", side_effect=fake_check):
+        findings = check_claims_against_target(
+            ["first claim", "second claim"], "README.md", "content", n=2
+        )
+
+    lines = sorted(f["line"] for f in findings)
+    assert lines == ["stale line A", "stale line B"]
+
+
+def test_check_claims_against_target_drops_a_fully_failed_claim():
+    """One claim's entire ensemble failing must not take down the other
+    claims' results — a missing vote, not a fatal error."""
+    def fake_check(claim, target_path, target_content):
+        if "doomed" in claim:
+            raise ConnectionError("boom")
+        return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
+
+    with patch("claims.check_claim_against_target", side_effect=fake_check):
+        findings = check_claims_against_target(
+            ["doomed claim", "healthy claim"], "README.md", "content", n=2
+        )
+
+    assert len(findings) == 1
+    assert findings[0]["line"] == "stale line A"
+
+
+def test_check_claims_against_target_raises_when_every_claim_fails():
+    with patch("claims.check_claim_against_target", side_effect=ConnectionError("boom")):
+        with pytest.raises(RuntimeError, match="README.md"):
+            check_claims_against_target(["a", "b"], "README.md", "content", n=2)
