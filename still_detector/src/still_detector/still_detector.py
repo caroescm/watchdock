@@ -56,11 +56,13 @@ def _process_target(target_path, claims, repo, pr, origin):
 
         if origin == "agent":
             delivery = commit_fix_to_branch(
-                repo, pr, target_path, target_content, finding["line"], fix_text
+                repo, pr, target_path, target_content, finding["line"], fix_text,
+                finding_type=finding.get("type", "drift"), reason=finding["reason"],
             )
         else:
             delivery = post_pr_suggestion(
-                pr, target_path, target_content, finding["line"], fix_text
+                pr, target_path, target_content, finding["line"], fix_text,
+                finding_type=finding.get("type", "drift"), reason=finding["reason"],
             )
 
         lines.append(f"- [{finding.get('type', '?')}] {finding['line']}")

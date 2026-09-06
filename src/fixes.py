@@ -1,4 +1,8 @@
+import logging
+
 from nim_client import chat_completion
+
+logger = logging.getLogger(__name__)
 
 
 def draft_fix(target_path, stale_line, reason):
@@ -31,33 +35,53 @@ def _find_line_number(file_content, stale_line):
     return None
 
 
-def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text):
-    """Posts a GitHub suggestion-block review comment on the exact stale line.
-    Falls back to a plain PR comment if the exact line can't be pinpointed
-    (e.g. the model paraphrased instead of quoting verbatim)."""
+def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
+                       finding_type="drift", reason=""):
+    """Posts a GitHub suggestion-block review comment on the exact stale line,
+    with an explanation of what kind of drift was found and why the line is
+    wrong — not just the bare replacement text.
+
+    Falls back to a plain PR comment carrying the same explanation if the
+    exact line can't be pinpointed (e.g. the model paraphrased instead of
+    quoting verbatim), or if GitHub rejects the review comment — review
+    comments can only anchor to lines that are part of the PR's diff, and a
+    stale doc line usually isn't (the PR changed code, not the doc)."""
+    explanation = f"🔎 **Still — {finding_type}** in `{target_path}`: {reason}"
     line_number = _find_line_number(target_content, stale_line)
 
+    fallback_body = (
+        f"{explanation}\n\n**Stale line:**\n> {stale_line}\n\n"
+        f"**Suggested replacement:**\n> {fix_text}"
+    )
+
     if line_number is None:
-        pr.create_issue_comment(
-            f"⚠️ Still found a stale claim in `{target_path}` but couldn't pinpoint the "
-            f"exact line for a suggestion.\n\n**Old:** {stale_line}\n\n**Suggested:** {fix_text}"
-        )
+        pr.create_issue_comment(fallback_body)
         return "fallback_comment"
 
-    pr.create_review_comment(
-        body=fix_text,
-        commit=pr.head.sha,
-        path=target_path,
-        line=line_number,
-        as_suggestion=True,
-    )
-    return "suggestion_posted"
+    try:
+        # Build the suggestion fence by hand (instead of as_suggestion=True)
+        # so the comment can carry the explanation above the one-click fix.
+        pr.create_review_comment(
+            body=f"{explanation}\n\n```suggestion\n{fix_text}\n```",
+            commit=pr.head.sha,
+            path=target_path,
+            line=line_number,
+        )
+        return "suggestion_posted"
+    except Exception:
+        pr.create_issue_comment(fallback_body)
+        return "fallback_comment"
 
 
-def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_text):
+def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_text,
+                         finding_type="drift", reason=""):
     """Directly commits the corrected file content to the PR's branch. Used only
     for agent-authored PRs (see detect_pr_origin) — the reviewer still sees the
-    fix as part of the PR before merge, just without an extra manual step."""
+    fix as part of the PR before merge, just without an extra manual step.
+
+    Also leaves a PR comment saying exactly what was changed and why, so the
+    committed fix never lands silently — without it the only trace would be
+    an extra commit in the branch history."""
     updated_content = target_content.replace(stale_line, fix_text)
 
     if updated_content == target_content:
@@ -72,4 +96,14 @@ def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_
         sha=current_file.sha,
         branch=pr.head.ref,
     )
+
+    try:
+        pr.create_issue_comment(
+            f"🔧 **Still — {finding_type}**: committed a fix to `{target_path}` on this branch.\n\n"
+            f"**Why:** {reason}\n\n**Old:**\n> {stale_line}\n\n**New:**\n> {fix_text}"
+        )
+    except Exception:
+        # The fix itself landed; a failed comment shouldn't fail the run.
+        logger.warning("Committed fix to %s but couldn't post the explanatory comment",
+                       target_path, exc_info=True)
     return "committed"
