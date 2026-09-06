@@ -43,16 +43,16 @@ Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkab
 ## M4 — Benchmark (Day 4)
 **Done when:** you have a table of real numbers comparing three approaches, and you've used it to fix at least one prompt issue.
 
-- [ ] Build sample repo with a README, an `AGENTS.md`/`CLAUDE.md`, and some source code (pick a non-Python language for at least part of it, to prove the any-language claim)
-- [ ] Write 12-15 drift-case PR diffs against that repo, split: deterministic-catchable vs. semantic-only, split across doc-target vs. instruction-target
-- [ ] Write 8-10 clean-case PR diffs (no real drift) as the false-positive control group
-- [ ] Add a few cases with agent-authorship trailers to test origin-detection accuracy
-- [ ] Implement the deterministic baseline (Evidoc-style: does a referenced path/command/symbol still exist)
-- [ ] Implement the single-prompt-LLM variant (one NIM call, no agent framework)
-- [ ] Run all three approaches (baseline, single-prompt, full pipeline) against the full eval set
-- [ ] Compute precision/recall/F1 (overall + split by doc vs. instruction-file), fix-quality rate, origin-detection accuracy, cost per PR
-- [ ] Review false positives/negatives, tune prompts, re-run until numbers are presentable
-- [ ] Write up results in a `BENCHMARK.md` or README section, framed honestly as a self-built eval set
+- [x] Build sample repo with a README, an `AGENTS.md`/`CLAUDE.md`, and some source code — `benchmark/sample_repo/`, a small Node.js "todo-cli" tool (proves the any-language claim: JS, not Python)
+- [x] Write drift-case PR diffs, split deterministic-catchable vs. semantic-only, split doc-target vs. instruction-target — `benchmark/cases.py`, 12 drift cases (3 per bucket × 4 buckets)
+- [x] Write clean-case PR diffs as the false-positive control group — 8 clean cases in `benchmark/cases.py`
+- [ ] Add cases with agent-authorship trailers to test origin-detection accuracy — not built (origin detection already has its own dedicated tests from M3; deprioritized for the benchmark specifically given time)
+- [x] Implement the deterministic baseline — `benchmark/baseline.py`; caught two real case-design bugs while smoke-testing it (a short-circuit that defeated its own detection logic, and a fake non-diff-formatted patch)
+- [x] Implement the single-prompt-LLM variant — `benchmark/single_prompt.py`
+- [x] Run all three approaches against a representative subset (9 of 20 cases — 7 drift + 2 clean, chosen to include the 3 hardest baseline-proof cases) — full 20 not run, deliberate time/cost tradeoff, documented in `BENCHMARK.md`
+- [x] Compute precision/recall/F1 — see `BENCHMARK.md`; fix-quality rate, origin-detection accuracy, and cost-per-PR were not separately measured (out of scope given the reduced case count)
+- [x] Review results — found real run-to-run variance (same case scored differently across two runs) and one major latency outlier (918s vs. typical 30-370s); both documented rather than smoothed over, no prompt changes made this round
+- [x] Write up results in `BENCHMARK.md`, framed honestly as a small self-built eval set with explicit limitations section
 
 ## M5 — Ship (Day 5)
 **Done when:** the entry is submitted with #NVIDIAGTC and a judge tag, before the Sep 10 deadline.
