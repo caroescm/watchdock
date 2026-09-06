@@ -32,7 +32,11 @@ def format_diff(diff):
 
 
 def extract_claims(diff):
-    """Given a PR diff, ask the model what doc/instruction claims this change could affect."""
+    """Given a PR diff, ask the model what doc/instruction claims this change could affect.
+
+    Output format is one CLAIM: block per claim (parsed by parse_claims) rather
+    than free-form prose: each claim is later checked against every target file
+    in its own independent call, so each one has to stand alone."""
     relevant_diff = [entry for entry in diff if _is_relevant(entry["filename"])]
     if not relevant_diff:
         return "NONE"
@@ -41,7 +45,14 @@ def extract_claims(diff):
 
     prompt = f"""You are reviewing a code change to figure out what it might make false in project documentation or AI-agent instruction files (like README.md, AGENTS.md, CLAUDE.md).
                 Given the diff below, list any specific claims this change could affect: library/dependency choices, CLI commands, config keys, function signatures, file/module locations, described behavior, or stated conventions.
-                For each one, briefly describe what changed and what kind of documented claim it might now contradict. If nothing in the diff seems relevant to documentation or agent instructions, respond with exactly: NONE
+                For each one, briefly describe what changed and what kind of documented claim it might now contradict.
+
+Respond with one block per claim, with a blank line between blocks, in exactly this format:
+CLAIM: <what changed and what documented claim it could now contradict>
+
+Each CLAIM must be fully self-contained — it will later be checked against documentation on its own, without the other claims or this diff for context — so name the specific files, symbols, commands, or values involved rather than referring to "the change above" or "see previous".
+
+If nothing in the diff seems relevant to documentation or agent instructions, respond with exactly: NONE
 
 Diff:
 {diff_text}
@@ -49,24 +60,68 @@ Diff:
     return chat_completion(prompt)
 
 
-def check_claim_against_target(claims, target_path, target_content):
-    """One NIM call: does target_content still accurately describe the code, given claims?"""
-    prompt = f"""You are checking whether a documentation or agent-instruction file is still accurate, given a set of claims about what a code change affected.
+def parse_claims(extract_result):
+    """Parses extract_claims's CLAIM: blocks into a list of individual claim
+    strings. Returns [] for a NONE response.
 
-Claims about what changed:
-{claims}
+    Continuation lines (non-empty lines that don't start a new CLAIM:) are
+    folded into the current claim, so a claim wrapped across lines survives.
+    If the output is non-NONE but contains no CLAIM: blocks at all (the model
+    ignored the format), the whole output is returned as a single claim
+    rather than silently dropping everything — the downstream check prompt
+    handled free-form claim prose fine for the project's entire history, so
+    a format miss degrades to the old behavior instead of a false 'no drift'."""
+    text = extract_result.strip()
+    if not text or text.upper() == "NONE":
+        return []
+
+    claims = []
+    current = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.upper().startswith("CLAIM:"):
+            if current:
+                claims.append(current)
+            current = line[len("CLAIM:"):].strip()
+        elif current is not None and line:
+            current += " " + line
+    if current:
+        claims.append(current)
+
+    claims = [c for c in claims if c]
+    if not claims:
+        logger.warning("extract_claims output had no CLAIM: blocks; falling back to the whole output as one claim")
+        return [text]
+    return claims
+
+
+def check_claim_against_target(claim, target_path, target_content):
+    """One NIM call: does target_content still accurately describe the code, given one claim?
+
+    Takes a single claim, not the whole extracted set: NVIDIA's free-tier NIM
+    endpoint enforces a hard ~10-minute server-side generation cap (two real
+    triggered runs both died at 10:00 sharp, mid-stream, immune to streaming
+    and retries), and holding an entire multi-category claims blob against a
+    large target file in one continuous reasoning pass is exactly what pushed
+    calls past it. One narrow claim per call is also the granularity the
+    benchmark's 100%-recall result was actually measured at — every benchmark
+    case was a single, narrowly-scoped change."""
+    prompt = f"""You are checking whether a documentation or agent-instruction file is still accurate, given a claim about what a code change affected.
+
+Claim about what changed:
+{claim}
 
 Here is the current content of `{target_path}`:
 {target_content}
 
-For each line in `{target_path}` that these claims make now inaccurate or contradicted, quote the exact line and explain why it's now wrong. Roughly classify it as one of:
+For each line in `{target_path}` that this claim makes now inaccurate or contradicted, quote the exact line and explain why it's now wrong. Roughly classify it as one of:
 - semantic staleness: the line is still syntactically fine but now describes something false
 - broken reference: the line points to something (a file, command, or symbol) that no longer exists at all
 
 If a line could reasonably be either, just pick whichever fits best and move on — do not spend time deliberating between the two, the exact label is a minor detail, not the point. The important thing is catching every line that's actually wrong.
 
 Do NOT include lines that are unaffected — only report lines that are actually now wrong.
-If nothing in `{target_path}` is affected by these claims, respond with exactly: NONE
+If nothing in `{target_path}` is affected by this claim, respond with exactly: NONE
 
 Respond in this format for each finding, with a blank line between findings:
 LINE: <exact quoted line, verbatim from the file above>
@@ -127,7 +182,7 @@ def _merge_findings(list_of_finding_lists):
     return merged
 
 
-def check_claim_against_target_ensemble(claims, target_path, target_content, n=3):
+def check_claim_against_target_ensemble(claim, target_path, target_content, n=3):
     """Runs check_claim_against_target n times in parallel and unions the
     results, instead of trusting a single sample.
 
@@ -156,7 +211,7 @@ def check_claim_against_target_ensemble(claims, target_path, target_content, n=3
     """
     with ThreadPoolExecutor(max_workers=n) as executor:
         futures = [
-            executor.submit(check_claim_against_target, claims, target_path, target_content)
+            executor.submit(check_claim_against_target, claim, target_path, target_content)
             for _ in range(n)
         ]
         raw_results = []
@@ -171,3 +226,43 @@ def check_claim_against_target_ensemble(claims, target_path, target_content, n=3
 
     all_findings = [parse_findings(r) for r in raw_results]
     return _merge_findings(all_findings)
+
+
+def check_claims_against_target(claims_list, target_path, target_content, n=3):
+    """Checks each individual claim against the target as its own independent
+    ensemble, all claims in parallel, and unions every finding.
+
+    This per-claim decomposition exists because of a measured hard wall:
+    NVIDIA's free-tier NIM endpoint kills generation at ~10 minutes
+    server-side (two separate real triggered runs failed mid-stream at
+    exactly 10:00 — after streaming and whole-call retries were already in
+    place, so neither can help). A single call carrying the entire claims
+    blob against a large target file is the one task shape that ran long
+    enough to hit it. One claim per call keeps each generation short, and
+    since claims run concurrently, wall-clock is the slowest single claim
+    rather than one monolithic pass. nim_client caps global concurrency so
+    (claims x ensemble x targets) fan-out can't stampede the API.
+
+    Failure policy mirrors the sample level one layer up: a claim whose
+    entire ensemble failed is logged and dropped (a missing vote, not a
+    fatal error); raise only if every claim failed, since then there's
+    genuinely no result to report."""
+    with ThreadPoolExecutor(max_workers=max(len(claims_list), 1)) as executor:
+        futures = {
+            executor.submit(check_claim_against_target_ensemble, claim, target_path, target_content, n): claim
+            for claim in claims_list
+        }
+        per_claim_findings = []
+        failed = 0
+        for future, claim in futures.items():
+            try:
+                per_claim_findings.append(future.result())
+            except Exception:
+                failed += 1
+                logger.warning("Every ensemble sample failed for claim %r against %s; dropping that claim",
+                               claim[:120], target_path, exc_info=True)
+
+    if claims_list and failed == len(claims_list):
+        raise RuntimeError(f"All {len(claims_list)} claims failed against {target_path}; no result to report")
+
+    return _merge_findings(per_claim_findings)

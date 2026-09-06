@@ -21,7 +21,7 @@ for _path in (_REPO_ROOT, _SRC_DIR):
 
 from github_api import get_pr_context, get_diff, detect_pr_origin  # noqa: E402
 from targets import discover_targets  # noqa: E402
-from claims import extract_claims, check_claim_against_target_ensemble  # noqa: E402
+from claims import extract_claims, parse_claims, check_claims_against_target  # noqa: E402
 from fixes import draft_fix, post_pr_suggestion, commit_fix_to_branch  # noqa: E402
 
 
@@ -39,10 +39,12 @@ def _process_target(target_path, claims, repo, pr, origin):
     with open(full_path) as f:
         target_content = f.read()
 
-    # Ensemble of 3 parallel samples, unioned — a single sample has shown
-    # real run-to-run variance (the same true finding sometimes missed),
-    # so we don't trust just one.
-    findings = check_claim_against_target_ensemble(claims, target_path, target_content)
+    # Each claim is checked independently (3-sample ensemble per claim, all
+    # claims in parallel), findings unioned — one call per narrow claim keeps
+    # every generation safely under NIM's ~10-minute server-side cap, and a
+    # single sample has shown real run-to-run variance (the same true finding
+    # sometimes missed), so we don't trust just one.
+    findings = check_claims_against_target(claims, target_path, target_content)
     logger.info("Merged findings for %s: %s", target_path, findings)
 
     if not findings:
@@ -92,10 +94,13 @@ async def still_detector_function(config: StillDetectorFunctionConfig, builder: 
         if not targets:
             return "No doc or instruction-file targets found in this repo."
 
-        claims = extract_claims(diff)
-        logger.info("Extracted claims:\n%s", claims)
+        claims_raw = extract_claims(diff)
+        logger.info("Extracted claims:\n%s", claims_raw)
 
-        if claims.strip().upper() == "NONE":
+        claims = parse_claims(claims_raw)
+        logger.info("Parsed %d individual claim(s)", len(claims))
+
+        if not claims:
             return "No claims in docs/instruction files are affected by this diff."
 
         origin = detect_pr_origin(pr)
