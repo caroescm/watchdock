@@ -1,4 +1,4 @@
-# Still — Milestones & Issue Tracker
+# Watchdoc — Milestones & Issue Tracker
 
 Mirrors the 5-day build plan in [PRD.md](PRD.md) Section 13, broken into checkable issues. Check items off as you go; each issue is scoped to be a single sitting, not a multi-day task.
 

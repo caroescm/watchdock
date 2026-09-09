@@ -1,6 +1,6 @@
 """
 Runs every case in cases.py through three approaches (deterministic baseline,
-single-prompt LLM, full Still pipeline) and reports precision/recall/F1 for each.
+single-prompt LLM, full Watchdoc pipeline) and reports precision/recall/F1 for each.
 """
 import sys
 import os

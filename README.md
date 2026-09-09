@@ -1,18 +1,18 @@
-# Still
+# Watchdoc
 
 **Keep your docs and your AI agent's instructions true.**
 
-Still is a GitHub Action that catches semantic drift — in both human-facing docs (`README.md`, `/docs`) and AI-agent instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`) — on every pull request, in any language. When a code change makes a stated claim, convention, or instruction wrong, Still flags the exact line and fixes it: a suggestion comment when a human authored the PR, or a direct commit when an AI coding agent did.
+Watchdoc is a GitHub Action that catches semantic drift — in both human-facing docs (`README.md`, `/docs`) and AI-agent instruction files (`AGENTS.md`, `CLAUDE.md`, `.cursor/rules`) — on every pull request, in any language. When a code change makes a stated claim, convention, or instruction wrong, Watchdoc flags the exact line and fixes it: a suggestion comment when a human authored the PR, or a direct commit when an AI coding agent did.
 
 Built on **NVIDIA NeMo Agent Toolkit** and a **NIM-hosted Nemotron model**, for the [NVIDIA GTC Berlin Golden Ticket Developer Contest](https://developer.nvidia.com/gtc-golden-ticket-contest).
 
 ## See it in action
 
-A real PR in this repo renamed the config file `.still.yml` to `.still-config.yml` in code. Still detected that the README's description was now stale, recognized the PR as agent-authored, committed the one-line fix itself, and explained what it did:
+A real PR in this repo renamed the config file `.still.yml` to `.still-config.yml` in code. Watchdoc detected that the README's description was now stale, recognized the PR as agent-authored, committed the one-line fix itself, and explained what it did:
 
-> 🔧 **Still — semantic staleness**: committed a fix to `README.md` on this branch.
+> 🔧 **Watchdoc — semantic staleness**: committed a fix to `README.md` on this branch.
 >
-> **Why:** The CONFIG_FILENAME changed from `.still.yml` to `.still-config.yml`, so Still now reads the explicit target list from `.still-config.yml` instead. This line still reads syntactically valid text but now describes an outdated config filename, making it semantically stale.
+> **Why:** The CONFIG_FILENAME changed from `.still.yml` to `.still-config.yml`, so Watchdoc now reads the explicit target list from `.still-config.yml` instead. This line still reads syntactically valid text but now describes an outdated config filename, making it semantically stale.
 >
 > **Old:** … (or reads an explicit list from `.still.yml`)
 > **New:** … (or reads an explicit list from `.still-config.yml`)
@@ -21,10 +21,10 @@ Every run also maintains a single summary comment on the PR — green "no drift 
 
 ## Quick start (for adopters)
 
-Add `.github/workflows/still.yml` to your repo:
+Add `.github/workflows/watchdoc.yml` to your repo:
 
 ```yaml
-name: Still
+name: Watchdoc
 on:
   pull_request:
 
@@ -41,7 +41,18 @@ jobs:
           nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
 ```
 
-Get a free NVIDIA API key at [build.nvidia.com](https://build.nvidia.com) (no credit card, ~1,000 free inference credits) and add it as a repo secret named `NVIDIA_API_KEY`. That's it — no other setup. To try it end to end, open a PR that changes something your `README.md` or `AGENTS.md` describes (rename a command, a flag, a config key) and watch Still flag and fix the stale line.
+Get a free NVIDIA API key at [build.nvidia.com](https://build.nvidia.com) (no credit card, ~1,000 free inference credits) and add it as a repo secret named `NVIDIA_API_KEY`. That's it — no other setup. To try it end to end, open a PR that changes something your `README.md` or `AGENTS.md` describes (rename a command, a flag, a config key) and watch Watchdoc flag and fix the stale line.
+
+### Inputs
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `nvidia_api_key` | Yes | — | NVIDIA NIM API key, used to call the NIM-hosted Nemotron model. |
+| `github_token` | No | `${{ github.token }}` | GitHub token for reading PRs and posting results. |
+
+### Outputs
+
+Watchdoc has no outputs — it delivers results directly as PR comments and commits rather than exposing them to downstream steps.
 
 ## The problem
 
@@ -51,7 +62,7 @@ Existing tools each solve one narrow slice of this — deterministic checkers (E
 
 ## How it works
 
-On every PR, Still:
+On every PR, Watchdoc:
 
 1. **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.still-config.yml`)
 2. **Extracts claims** from the diff — a reasoning-model pass that lists, one by one, what this change could make wrong in documentation
@@ -65,7 +76,7 @@ If nothing is affected, the summary comment simply reports a green "no drift det
 
 ## Architecture
 
-- **NVIDIA NeMo Agent Toolkit** (`nvidia-nat`) — the Still pipeline is registered as a NAT workflow (`still_detector/`), invoked via `nat run`, not a raw API wrapper.
+- **NVIDIA NeMo Agent Toolkit** (`nvidia-nat`) — the Watchdoc pipeline is registered as a NAT workflow (`watchdoc_detector/`), invoked via `nat run`, not a raw API wrapper.
 - **NVIDIA NIM** (build.nvidia.com) — hosts the reasoning model (`nvidia/nemotron-3.5-lightning-30b-a3b`), free-tier, OpenAI-compatible endpoint.
 - **Deterministic pipeline, not a free-planning agent** — the steps (discover → extract claims → check → fix → deliver) always run in the same fixed order, so we built this as a NAT workflow function rather than a `tool_calling_agent` choosing its own order. See [PRD.md §7](project-docs/PRD.md#7-nvidia-technology-usage) for the reasoning.
 - **Reliability engineering, all measured against real failures**, not hypothetical ones:
@@ -73,19 +84,19 @@ If nothing is affected, the summary comment simply reports a green "no drift det
   - *3x ensembles:* the model is measurably nondeterministic at `temperature=0` — the same call sometimes catches a real finding and sometimes misses it. Three samples unioned hedge that; a failed sample is a missing vote, not a fatal error.
   - *Streaming + whole-call retries:* non-streaming calls got connection-reset at ~4.5 minutes of silence by an intermediate proxy; mid-stream server errors aren't covered by SDK retries. Both observed in real runs, both handled.
   - *Bounded concurrency:* a global cap on simultaneous NIM requests, so (claims × ensemble × targets) fan-out can't stampede the free-tier API.
-- **Source layout:** `src/` (core logic: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `report.py`, `nim_client.py`), `still_detector/` (the NAT workflow package wrapping it), `tests/` (pytest suite, no network needed), `benchmark/` (eval harness — see below).
+- **Source layout:** `src/` (core logic: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `report.py`, `nim_client.py`), `watchdoc_detector/` (the NAT workflow package wrapping it), `tests/` (pytest suite, no network needed), `benchmark/` (eval harness — see below).
 
 ## Benchmark
 
-Still-Bench compares three approaches on a self-built eval set: a deterministic baseline (mimicking Evidoc), a single-prompt LLM call, and Still's full pipeline (claim extraction → per-claim 3x parallel ensemble checks, unioned). Final result on all 9 cases run:
+Watchdoc-Bench compares three approaches on a self-built eval set: a deterministic baseline (mimicking Evidoc), a single-prompt LLM call, and Watchdoc's full pipeline (claim extraction → per-claim 3x parallel ensemble checks, unioned). Final result on all 9 cases run:
 
 | Approach | Recall | Precision |
 |---|---|---|
 | Deterministic baseline | 57% | 1.00 |
 | Single-prompt LLM | 71% | 1.00 |
-| **Still (full pipeline)** | **100%** | **1.00** |
+| **Watchdoc (full pipeline)** | **100%** | **1.00** |
 
-On the 3 cases specifically designed to be unsolvable by a deterministic checker: baseline 0%, single-prompt 67%, Still 100%. After the per-claim redesign, the highest-signal subset (those 3 hardest cases, the historical truncation-bug case, and 2 clean controls) was re-run against the live API: same 100% recall and precision, with faster per-case times.
+On the 3 cases specifically designed to be unsolvable by a deterministic checker: baseline 0%, single-prompt 67%, Watchdoc 100%. After the per-claim redesign, the highest-signal subset (those 3 hardest cases, the historical truncation-bug case, and 2 clean controls) was re-run against the live API: same 100% recall and precision, with faster per-case times.
 
 This 100% wasn't the first result — it came from diagnosing and fixing a real bug (the model getting stuck deliberating and running out of its thinking-token budget before emitting an answer) after an earlier optimization attempt for speed dropped recall to 71%. Full methodology, the complete optimization journey, and honest remaining limitations (small sample, demonstrated model nondeterminism at temperature=0, real latency) are in [BENCHMARK.md](project-docs/BENCHMARK.md) — worth reading, since the journey is more informative than the final table alone.
 
@@ -96,7 +107,7 @@ git clone https://github.com/caroescm/GTCberlin.git
 cd GTCberlin
 python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-nat doesn't support 3.14 yet)
 pip install -r requirements.txt
-pip install -e still_detector
+pip install -e watchdoc_detector
 ```
 
 Run the test suite (no API key needed — these test pure logic, not live model calls):
@@ -108,14 +119,14 @@ python3 -m pytest tests/ -v
 Run the actual pipeline locally against a real PR (needs `NVIDIA_API_KEY` and `GITHUB_TOKEN` env vars set):
 
 ```bash
-nat run --config_file still_detector/src/still_detector/configs/config.yml --input "check this PR"
+nat run --config_file watchdoc_detector/src/watchdoc_detector/configs/config.yml --input "check this PR"
 ```
 
 ## Known limitations / future work
 
 - **Live, mid-session auto-update** (updating a file the instant an agent edits it, before any PR exists) is not built — this needs a local git hook or agent-tool hook, a meaningfully separate project. The obvious next step.
 - The full 20-case benchmark wasn't entirely run (9/20, chosen to include the highest-signal cases) — see [`BENCHMARK.md`](project-docs/BENCHMARK.md) for what's outstanding.
-- No per-language AST parsing — Still reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
+- No per-language AST parsing — Watchdoc reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
 - **Latency is real, if much improved.** Measured on real CI runs: a clean PR completes in ~5–6 minutes; a PR with drift (detection + fix drafting + delivery) takes ~9–12. Reasoning-mode calls are doing real inference work — every shortcut tried (disabling thinking, capping the ensemble wait) measurably cost recall and was reverted. See [`BENCHMARK.md`](project-docs/BENCHMARK.md) for the full latency investigation.
 - **API cost per PR is higher** than a single-call design: the detection step runs 3 ensemble samples per extracted claim in exchange for reliability.
 - **Precision on judgment-call lines isn't perfect**: the model can occasionally flag a line whose truth is arguable (e.g. a competitive claim about other tools). Delivery fails safe — a fix that doesn't match verbatim, or changes nothing, is refused rather than applied — and everything it does is explained on the PR.

@@ -46,7 +46,7 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
     quoting verbatim), or if GitHub rejects the review comment — review
     comments can only anchor to lines that are part of the PR's diff, and a
     stale doc line usually isn't (the PR changed code, not the doc)."""
-    explanation = f"🔎 **Still — {finding_type}** in `{target_path}`: {reason}"
+    explanation = f"🔎 **Watchdoc — {finding_type}** in `{target_path}`: {reason}"
     line_number = _find_line_number(target_content, stale_line)
 
     fallback_body = (
@@ -91,7 +91,7 @@ def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_
     current_file = repo.get_contents(target_path, ref=pr.head.ref)
     repo.update_file(
         path=target_path,
-        message=f"Still: fix stale claim in {target_path}",
+        message=f"Watchdoc: fix stale claim in {target_path}",
         content=updated_content,
         sha=current_file.sha,
         branch=pr.head.ref,
@@ -99,7 +99,7 @@ def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_
 
     try:
         pr.create_issue_comment(
-            f"🔧 **Still — {finding_type}**: committed a fix to `{target_path}` on this branch.\n\n"
+            f"🔧 **Watchdoc — {finding_type}**: committed a fix to `{target_path}` on this branch.\n\n"
             f"**Why:** {reason}\n\n**Old:**\n> {stale_line}\n\n**New:**\n> {fix_text}"
         )
     except Exception:

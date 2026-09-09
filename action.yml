@@ -22,7 +22,7 @@ runs:
       shell: bash
       run: |
         pip install -r ${{ github.action_path }}/requirements.txt
-        pip install -e ${{ github.action_path }}/still_detector
+        pip install -e ${{ github.action_path }}/watchdoc_detector
     - name: Run Watchdoc
       shell: bash
       env:
@@ -30,5 +30,5 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
         nat run \
-          --config_file ${{ github.action_path }}/still_detector/src/still_detector/configs/config.yml \
+          --config_file ${{ github.action_path }}/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
           --input "check this PR"

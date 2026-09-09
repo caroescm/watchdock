@@ -1,4 +1,4 @@
-"""Builds and posts Still's per-run summary comment on the PR.
+"""Builds and posts Watchdoc's per-run summary comment on the PR.
 
 Every run maintains exactly one summary comment — created on the first run,
 edited in place on every run after that (found again via an invisible HTML
@@ -10,7 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_MARKER = "<!-- still-run-summary -->"
+SUMMARY_MARKER = "<!-- watchdoc-run-summary -->"
 
 _DELIVERY_LABELS = {
     "committed": "🔧 fix committed to this branch",
@@ -42,7 +42,7 @@ def build_run_summary(origin, targets, claims, findings_by_target):
                     f"fixes delivered below.")
 
     lines = [
-        "## 🛰️ Still — docs & agent-instruction drift check",
+        "## 🛰️ Watchdoc — docs & agent-instruction drift check",
         "",
         headline,
         "",

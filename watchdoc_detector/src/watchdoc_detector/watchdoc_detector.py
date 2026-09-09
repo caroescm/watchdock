@@ -10,7 +10,7 @@ from nat.plugin_api import register_function
 
 logger = logging.getLogger(__name__)
 
-# This package lives at <repo_root>/still_detector/src/still_detector/still_detector.py
+# This package lives at <repo_root>/watchdoc_detector/src/watchdoc_detector/watchdoc_detector.py
 # Our actual detection logic lives at <repo_root>/src/*.py — add both the repo root
 # and its src/ dir to sys.path so we can import them with their existing flat names.
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
@@ -26,9 +26,9 @@ from fixes import draft_fix, post_pr_suggestion, commit_fix_to_branch  # noqa: E
 from report import build_run_summary, post_run_summary_safely  # noqa: E402
 
 
-class StillDetectorFunctionConfig(FunctionBaseConfig, name="still_detector"):
+class WatchdocDetectorFunctionConfig(FunctionBaseConfig, name="watchdoc_detector"):
     """
-    Still drift detector: checks docs and AI-agent instruction files for semantic drift against a PR diff.
+    Watchdoc drift detector: checks docs and AI-agent instruction files for semantic drift against a PR diff.
     """
 
 
@@ -79,15 +79,15 @@ def _format_target_report(target_path, findings):
     return "\n".join(lines)
 
 
-@register_function(config_type=StillDetectorFunctionConfig)
-async def still_detector_function(config: StillDetectorFunctionConfig, builder: Builder):
+@register_function(config_type=WatchdocDetectorFunctionConfig)
+async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, builder: Builder):
     """
-    Registers the Still drift-detection workflow (addressable via `still_detector` in configuration).
+    Registers the Watchdoc drift-detection workflow (addressable via `watchdoc_detector` in configuration).
     """
 
-    async def run_still_check(task: str) -> str:
+    async def run_watchdoc_check(task: str) -> str:
         """
-        Runs the full Still pipeline against the current PR: discovers target files,
+        Runs the full Watchdoc pipeline against the current PR: discovers target files,
         fetches the diff, extracts claims, checks each target for drift, and for
         every real finding drafts a fix and delivers it — as a suggestion comment
         for human-authored PRs, or a direct commit for agent-authored PRs. Target
@@ -135,4 +135,4 @@ async def still_detector_function(config: StillDetectorFunctionConfig, builder: 
         header = f"PR #{pr.number}: {pr.title} (origin: {origin})"
         return "\n\n".join([header] + reports)
 
-    yield FunctionInfo.from_fn(run_still_check, description=run_still_check.__doc__)
+    yield FunctionInfo.from_fn(run_watchdoc_check, description=run_watchdoc_check.__doc__)
