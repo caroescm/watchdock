@@ -8,6 +8,9 @@ inputs:
     description: 'GitHub token for reading PRs and posting results'
     required: false
     default: ${{ github.token }}
+branding:
+  icon: 'eye'
+  color: 'orange'
 runs:
   using: 'composite'
   steps:
