@@ -122,6 +122,10 @@ Run the actual pipeline locally against a real PR (needs `NVIDIA_API_KEY` and `G
 nat run --config_file watchdoc_detector/src/watchdoc_detector/configs/config.yml --input "check this PR"
 ```
 
+## Compatibility
+
+Every run of this repo's own CI (`.github/workflows/watchdoc.yml`) exercises the action end-to-end on `ubuntu-latest` — that's the only runner it's actually been tested on. It hasn't been run on `macos-latest` or `windows-latest`. Both `run:` steps in [`action.yml`](action.yml) declare `shell: bash` explicitly (composite steps don't inherit a default shell), so they should work on all three GitHub-hosted runners — Windows runners ship Git Bash — but the Python/`pip`/`nat` toolchain behavior on macOS and Windows hasn't been verified in CI. If you hit a runner-specific issue, please open one.
+
 ## Known limitations / future work
 
 - **Live, mid-session auto-update** (updating a file the instant an agent edits it, before any PR exists) is not built — this needs a local git hook or agent-tool hook, a meaningfully separate project. The obvious next step.
