@@ -21,6 +21,7 @@ runs:
     - name: Install dependencies
       shell: bash
       run: |
+        set -euo pipefail
         pip install -r ${{ github.action_path }}/requirements.txt
         pip install -e ${{ github.action_path }}/watchdoc_detector
     - name: Run Watchdoc
@@ -29,6 +30,7 @@ runs:
         NVIDIA_API_KEY: ${{ inputs.nvidia_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
+        set -euo pipefail
         nat run \
           --config_file ${{ github.action_path }}/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
           --input "check this PR"
