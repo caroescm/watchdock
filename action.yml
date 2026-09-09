@@ -1,4 +1,4 @@
-name: 'Still'
+name: 'Watchdoc'
 description: 'Catches semantic drift in docs and AI-agent instruction files on every PR'
 inputs:
   nvidia_api_key:
@@ -15,7 +15,7 @@ runs:
   using: 'composite'
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: '3.12'
     - name: Install dependencies
@@ -23,7 +23,7 @@ runs:
       run: |
         pip install -r ${{ github.action_path }}/requirements.txt
         pip install -e ${{ github.action_path }}/still_detector
-    - name: Run Still
+    - name: Run Watchdoc
       shell: bash
       env:
         NVIDIA_API_KEY: ${{ inputs.nvidia_api_key }}

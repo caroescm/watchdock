@@ -35,7 +35,7 @@ jobs:
       pull-requests: write   # post suggestions and the summary comment
       contents: write        # commit fixes on agent-authored PRs
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: caroescm/GTCberlin@main
         with:
           nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
