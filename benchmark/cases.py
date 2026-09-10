@@ -1,8 +1,10 @@
 """
 AgentTruth-Bench / Watchdoc-Bench eval cases.
 
-Each case represents one PR against benchmark/sample_repo/. `diff` is a list of DiffEntry
-objects, the same shape watchdoc.github_api.get_diff() returns.
+Each case is one hypothetical PR against a small Node project whose two doc
+files live in benchmark/sample_repo/ (the code the diffs touch is implied by
+the patches, not checked in). `diff` is a list of DiffEntry objects, the same
+shape watchdoc.github_api.get_diff() returns.
 `target_path` + `target_content_before` is the target file's content as it
 exists BEFORE any fix — i.e. the (possibly now-stale) state we're checking.
 

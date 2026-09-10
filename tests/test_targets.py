@@ -110,17 +110,6 @@ def test_cursor_rules_directory_yields_its_rule_files(tmp_path):
     assert result == [".cursor/rules/python.mdc", ".cursor/rules/style.mdc"]
 
 
-def test_legacy_config_name_still_read_with_a_warning(tmp_path, caplog):
-    (tmp_path / "AGENTS.md").write_text("# agents")
-    (tmp_path / "CONTRIBUTING.md").write_text("# contributing")
-    (tmp_path / ".still-config.yml").write_text("targets:\n  - CONTRIBUTING.md\n")
-
-    with caplog.at_level("WARNING"):
-        result = discover_targets(str(tmp_path))
-
-    assert result == ["CONTRIBUTING.md"]
-    assert ".watchdoc.yml" in caplog.text
-
 
 def test_watchdoc_yml_ignore_accepts_globs(tmp_path):
     docs = tmp_path / "docs"

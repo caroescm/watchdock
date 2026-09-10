@@ -40,9 +40,6 @@ DEFAULT_DOC_DIRS = [
 DOC_EXTENSIONS = {".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc"}
 
 CONFIG_FILENAME = ".watchdoc.yml"
-# The project's former name. Still read, with a warning, so existing
-# adopters don't silently lose their explicit target list.
-LEGACY_CONFIG_FILENAME = ".still-config.yml"
 
 
 def discover_targets(repo_root: str) -> list[str]:
@@ -89,11 +86,7 @@ def _load_config(repo_root: str) -> dict[str, list[str]]:
     (a bare string would otherwise iterate as characters)."""
     config_path = os.path.join(repo_root, CONFIG_FILENAME)
     if not os.path.isfile(config_path):
-        legacy_path = os.path.join(repo_root, LEGACY_CONFIG_FILENAME)
-        if not os.path.isfile(legacy_path):
-            return {}
-        logger.warning("%s is the old config name; rename it to %s", LEGACY_CONFIG_FILENAME, CONFIG_FILENAME)
-        config_path = legacy_path
+        return {}
     with open(config_path) as f:
         loaded = yaml.safe_load(f) or {}
     if not isinstance(loaded, dict):

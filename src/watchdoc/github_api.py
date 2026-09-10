@@ -3,6 +3,7 @@ files, and deciding who authored it."""
 import json
 import logging
 import re
+from collections.abc import Iterable
 
 from github import Github
 
@@ -35,7 +36,9 @@ def get_pr_context(pr_number: int | None = None):
             event = json.load(f)
         pr_number = event["pull_request"]["number"]
 
-    repo = Github(token).get_repo(repo_name)
+    # 100 items per page (the API maximum) instead of PyGithub's default 30:
+    # files, commits and comments are all paginated, and every page is a round trip.
+    repo = Github(token, per_page=100).get_repo(repo_name)
     return repo, repo.get_pull(pr_number)
 
 
@@ -84,7 +87,7 @@ AGENT_LOGINS = {
 }
 
 
-def detect_pr_origin_from_data(commit_messages: list[str], author_login: str = "") -> Origin:
+def detect_pr_origin_from_data(commit_messages: Iterable[str | None], author_login: str = "") -> Origin:
     """Pure logic, no API calls: Origin.AGENT if a commit carries a known
     agent's trailer or the author is a known agent account, else
     Origin.HUMAN. Defaults to HUMAN whenever ambiguous; never guess AGENT.
@@ -101,7 +104,8 @@ def detect_pr_origin_from_data(commit_messages: list[str], author_login: str = "
 
 
 def detect_pr_origin(pr) -> Origin:
-    """Reads a real PR's commits and author, returns an Origin."""
-    commit_messages = [c.commit.message for c in pr.get_commits()]
+    """Reads a real PR's commits and author, returns an Origin. The commit
+    scan is lazy, so it stops fetching pages at the first agent trailer."""
+    commit_messages = (c.commit.message for c in pr.get_commits())
     author_login = pr.user.login if pr.user else ""
     return detect_pr_origin_from_data(commit_messages, author_login or "")

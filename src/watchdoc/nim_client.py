@@ -191,10 +191,6 @@ def configure(**overrides: object) -> NimClient:
     return _default
 
 
-def default_client() -> NimClient:
-    return _default
-
-
 def chat_completion(prompt: str, enable_thinking: bool = True) -> str:
     return _default.chat_completion(prompt, enable_thinking)
 

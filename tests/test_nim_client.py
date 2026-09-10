@@ -191,7 +191,6 @@ def test_configure_replaces_the_default_client_with_the_given_overrides():
     configured = nim_client.configure(model="some/other-model", temperature=0.0,
                                       max_concurrent_requests=3, timeout_seconds=None)
 
-    assert nim_client.default_client() is configured
     assert configured.settings == Settings(model="some/other-model", temperature=0.0, max_concurrent_requests=3)
     assert nim_client.max_concurrent_requests() == 3
 

@@ -171,5 +171,6 @@ def run_pipeline(repo_root: str, options: RunOptions = DEFAULT_OPTIONS) -> str:
 
 
 def _post_summary(pr, summary: str) -> str:
-    post_run_summary_safely(pr, summary)
+    outcome = post_run_summary_safely(pr, summary)
+    logger.info("Run summary: %s", outcome)
     return summary

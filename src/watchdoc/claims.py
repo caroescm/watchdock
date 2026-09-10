@@ -70,14 +70,11 @@ def merge_findings(samples: list[list[Finding]]) -> list[Finding]:
     return [all_findings[i] for i in sorted(kept)]
 
 
-def pool_size(task_count: int, max_workers: int | None = None, cap: int | None = None) -> int:
+def pool_size(task_count: int, max_workers: int | None = None) -> int:
     """Threads for a fan-out of task_count model calls: never more than the
     tasks, never more than the NIM concurrency cap (extra threads would only
     queue on the gate), never fewer than one."""
-    if max_workers is not None:
-        limit = max_workers
-    else:
-        limit = cap if cap is not None else nim_client.max_concurrent_requests()
+    limit = max_workers if max_workers is not None else nim_client.max_concurrent_requests()
     return max(1, min(task_count, limit))
 
 

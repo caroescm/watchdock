@@ -86,7 +86,7 @@ If nothing is affected, the summary comment simply reports a green "no drift det
   - *Streaming + whole-call retries:* non-streaming calls got connection-reset at ~4.5 minutes of silence by an intermediate proxy; mid-stream server errors aren't covered by SDK retries. Both observed in real runs, both handled.
   - *Bounded concurrency:* a global cap on simultaneous NIM requests, so (claims × ensemble × targets) fan-out can't stampede the free-tier API.
 - **Source layout:** `src/watchdoc/` is the core package, host-independent: `pipeline.py` (the whole run), `github_api.py`, `targets.py`, `diff.py`, `claims.py`, `prompts.py`, `parsing.py`, `fixes.py`, `report.py`, `nim_client.py`, plus `models.py` (the frozen dataclasses and enums every stage shares), `env.py` (every environment variable, in one place) and `errors.py`. `watchdoc_detector/` is the NAT workflow package, a thin adapter that depends on `watchdoc`. `tests/` is the pytest suite (no network needed) and `benchmark/` the eval harness (see below).
-- **Dependency footprint:** the core package needs only PyGithub, openai and pyyaml. The NAT host pulls in a much larger tree (langchain, boto3, pandas and friends, about 160 packages in `constraints.txt`); that is the cost of running as a NAT workflow rather than a bare script.
+- **Dependency footprint:** the core package needs only PyGithub, openai and pyyaml. The NAT host (`nvidia-nat-core`) adds about 70 more, among them pandas, numpy, pymilvus, fastapi and uvicorn; that is the cost of running as a NAT workflow rather than a bare script. `constraints.txt` pins exactly that set.
 
 ## Benchmark
 
