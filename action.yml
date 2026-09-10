@@ -25,10 +25,10 @@ runs:
       with:
         # The version this action's own CI exercises. The packages accept 3.11-3.13
         # (pyproject.toml); only 3.12 has been run end to end.
+        # No pip cache here: cache-dependency-path can't reach constraints.txt,
+        # which lives under github.action_path (the action's own checkout),
+        # outside the consumer repo's workspace that actions/setup-python hashes.
         python-version: '3.12'
-        # Cache the ~70 wheels between runs; the key follows constraints.txt.
-        cache: pip
-        cache-dependency-path: ${{ github.action_path }}/constraints.txt
     - name: Install dependencies
       shell: bash
       run: |
