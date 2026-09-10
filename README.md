@@ -36,7 +36,7 @@ jobs:
       contents: write        # only if commit_fixes stays 'true' (direct commits on agent PRs)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: caroescm/watchdoc@main
+      - uses: caroescm/watchdoc@v1
         with:
           nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
 ```
