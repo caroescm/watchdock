@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write   # post suggestions and the summary comment
-      contents: write        # only if commit_fixes stays 'true' (direct commits on agent PRs)
+      contents: write        # only if commit_fixes stays 'true' (direct commits on every PR)
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: caroescm/watchdock@v1
@@ -49,7 +49,7 @@ Get a free NVIDIA API key at [build.nvidia.com](https://build.nvidia.com) (no cr
 |---|---|---|---|
 | `nvidia_api_key` | Yes | — | NVIDIA NIM API key, used to call the NIM-hosted Nemotron model. |
 | `github_token` | No | `${{ github.token }}` | GitHub token for reading PRs and posting results. |
-| `commit_fixes` | No | `'true'` | Commit fixes directly onto agent-authored PR branches. Set `'false'` to deliver every fix as a review suggestion and drop `contents: write` from the job. |
+| `commit_fixes` | No | `'true'` | Commit fixes directly onto the PR branch, whoever opened it. Set `'false'` to deliver every fix as a review suggestion instead and drop `contents: write` from the job. |
 
 ### Outputs
 
@@ -59,7 +59,7 @@ Watchdock has no outputs — it delivers results directly as PR comments and com
 
 `AGENTS.md`-style files are now the memory layer autonomous coding agents (Claude Code, Cursor, Codex, RALPH-style loops) actually run on — not just documentation for humans. 2026 practitioner consensus is blunt about what happens when they drift: a stale instruction file can be *worse than no file at all*, actively misdirecting an agent and measurably hurting task completion. Notably, no coding agent — including Claude Code itself — auto-updates its own instruction file today; the documented best practice is still "update it manually after every major change."
 
-Existing tools each solve one narrow slice of this — deterministic checkers (Evidoc, config-drift-checker) can tell you a referenced path/command no longer exists, but can't catch a *semantic* contradiction where the text is still syntactically valid but now describes something false. Semantic tools (doc-drift, Mintlify Workflows, CodeRabbit) target human-facing docs only, with no notion of agent-instruction files. Nobody combines semantic reasoning, both target types, any-language support, and origin-aware delivery — see the full comparison in [PRD.md](project-docs/PRD.md#12-competitive-differentiation-verified).
+Existing tools each solve one narrow slice of this — deterministic checkers (Evidoc, config-drift-checker) can tell you a referenced path/command no longer exists, but can't catch a *semantic* contradiction where the text is still syntactically valid but now describes something false. Semantic tools (doc-drift, Mintlify Workflows, CodeRabbit) target human-facing docs only, with no notion of agent-instruction files. Nobody combines semantic reasoning, both target types, and any-language support — see the full comparison in [PRD.md](project-docs/PRD.md#12-competitive-differentiation-verified).
 
 ## How it works
 
@@ -69,8 +69,8 @@ On every PR, Watchdock:
 2. **Extracts claims** from the diff — a reasoning-model pass that lists, one by one, what this change could make wrong in documentation
 3. **Checks each claim against each target file independently** — every claim gets its own focused model calls (a 3-sample parallel ensemble per claim, findings unioned), distinguishing *semantic staleness* (still valid-looking text, now wrong) from a *broken reference* (something that flat-out no longer exists)
 4. **Drafts a fix** for each real finding
-5. **Detects PR origin** — human or AI agent (via commit trailers like `Co-Authored-By: Claude`)
-6. **Delivers the fix** — a suggestion-block comment (with the finding type and reason) for a human to accept with one click, or a direct commit into the same branch plus an explanatory comment for an agent-authored PR — still reviewed by a human before merge either way
+5. **Detects PR origin** — human or AI agent (via commit trailers like `Co-Authored-By: Claude`) — reported in the summary comment, informational only
+6. **Delivers the fix** — by default, commits it directly onto the PR branch (whoever opened it) with an explanatory comment, so merging the PR includes the doc fix with no manual step; still fully visible for review before merge. Set `commit_fixes: false` to always deliver a review-suggestion comment instead (a real one-click GitHub suggestion when the stale line happens to be inside that PR's own diff, a plain explanatory comment otherwise — GitHub can only attach a suggestion to a line inside the PR's diff, and a stale *doc* line usually isn't, since the change that broke it was elsewhere)
 7. **Maintains one summary comment** — what was checked, every claim extracted, every fix delivered; edited in place on re-runs
 
 If nothing is affected, the summary comment simply reports a green "no drift detected" — one tidy comment per PR, never a pile.

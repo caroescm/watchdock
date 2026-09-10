@@ -23,7 +23,7 @@ Existing tools each solve one narrow slice of this:
 - **jbrockSTL/doc-drift, docsync, CodeRabbit** target human-facing README/docs only, with no notion of agent-instruction files at all.
 - **Cursor Bugbot / autogit** auto-commit fixes to a branch, but for code bugs, not doc/instruction drift — though they establish that origin-aware auto-commit (with attribution trailers like `Co-Authored-By: Claude` or `Shipped-by: autogit`) is already normal, checkable practice.
 
-Nobody combines: **semantic reasoning**, **both target types (docs + agent files) in one tool**, **any language**, **origin-aware output (comment vs. auto-commit)**, and **NVIDIA-native tooling**, running as a **CI-level check on every PR** regardless of which coding agent (if any) was used. That combination is the wedge — not any single piece of it in isolation.
+Nobody combines: **semantic reasoning**, **both target types (docs + agent files) in one tool**, **any language**, **direct-commit delivery** (the fix lands on the branch, not just a suggestion someone has to notice and apply), and **NVIDIA-native tooling**, running as a **CI-level check on every PR** regardless of which coding agent (if any) was used. That combination is the wedge — not any single piece of it in isolation.
 
 ## 3. Goals (MVP, 5-day build)
 
@@ -104,7 +104,7 @@ If present, this file's `targets` list replaces auto-detection entirely; `ignore
 
 | Criterion | How this entry addresses it |
 |---|---|
-| Technical innovation | Semantic (not deterministic) drift detection across both docs and agent-instruction files, with origin-aware delivery (comment vs. auto-commit) — a combination no existing tool provides — via diff-aware claim extraction chained through cooperating agents rather than one giant prompt |
+| Technical innovation | Semantic (not deterministic) drift detection across both docs and agent-instruction files, delivered as a direct commit onto the PR branch by default (not just a suggestion someone has to notice and apply) — a combination no existing tool provides — via diff-aware claim extraction chained through cooperating agents rather than one giant prompt |
 | Effective use of NVIDIA/partner tech | NeMo Agent Toolkit + NIM-hosted model is the core reasoning engine for every step, not decorative |
 | Impact/usefulness | Targets a documented, active failure mode (stale agent instructions, plus classic doc rot) relevant to anyone running agentic coding workflows — including the contest's own audience |
 | Documentation quality | The submission's own README/demo must be exemplary — dogfooding the tool's purpose |
@@ -144,9 +144,9 @@ Winning past entries (e.g. Project Chimera's RALPH loop benchmark, comparing Nem
 | suhteevah/docsync | General docs, 40+ languages | Deterministic (tree-sitter) | Auto-fix (paid tier) | Local/CI | No | No |
 | CodeRabbit | Whole PR review | LLM, doc-check is one minor feature | Minor feature among many | GitHub, PR-based | No | No |
 | Cursor Bugbot / autogit | Code bugs (not docs) | LLM / N/A | Auto-commit to branch, attribution trailers | GitHub / local | No | N/A |
-| **Watchdock (ours)** | Docs + agent-instruction files | LLM semantic reasoning via NeMo Agent Toolkit | Suggestion (human) or auto-commit (agent-authored), origin-aware | GitHub, every PR | **Yes** | **Yes** |
+| **Watchdock (ours)** | Docs + agent-instruction files | LLM semantic reasoning via NeMo Agent Toolkit | Auto-commit to the PR branch by default (any origin); review-suggestion mode available via `commit_fixes: false` | GitHub, every PR | **Yes** | **Yes** |
 
-**The gap this closes:** every agent-instruction-file tool is either deterministic (Evidoc, config-drift-checker) or locked inside a single client's session rather than a CI gate everyone sees (CLAUDE.md Auto-Updater). Every semantic/LLM doc tool targets human docs only. Nobody covers both target types with one mechanism, nobody makes delivery origin-aware, nobody uses NVIDIA's stack, and nobody publishes a benchmark. The honest claim is the *combination*, not any single piece in isolation.
+**The gap this closes:** every agent-instruction-file tool is either deterministic (Evidoc, config-drift-checker) or locked inside a single client's session rather than a CI gate everyone sees (CLAUDE.md Auto-Updater). Every semantic/LLM doc tool targets human docs only. Nobody covers both target types with one mechanism, nobody delivers a direct commit for this specific failure mode (a doc gone stale from a change elsewhere, which is exactly the case a native GitHub suggestion can't attach to), nobody uses NVIDIA's stack, and nobody publishes a benchmark. The honest claim is the *combination*, not any single piece in isolation.
 
 ## 13. 5-day build plan
 

@@ -44,9 +44,10 @@ def test_parse_pr_number():
 
 
 def test_resolve_delivery_mode():
-    assert resolve_delivery_mode(Origin.AGENT, commit_fixes=True) == DeliveryMode.COMMIT
-    assert resolve_delivery_mode(Origin.AGENT, commit_fixes=False) == DeliveryMode.SUGGEST
-    assert resolve_delivery_mode(Origin.HUMAN, commit_fixes=True) == DeliveryMode.SUGGEST
+    """Delivery no longer depends on who opened the PR: everyone gets a
+    direct commit unless the operator turns commit_fixes off entirely."""
+    assert resolve_delivery_mode(commit_fixes=True) == DeliveryMode.COMMIT
+    assert resolve_delivery_mode(commit_fixes=False) == DeliveryMode.SUGGEST
 
 
 def test_read_targets_reports_unreadable_files_instead_of_raising(tmp_path):
@@ -191,7 +192,7 @@ def test_run_pipeline_reports_an_unreadable_target_and_still_posts_summary_then_
     assert "1 target(s) could not be fully processed" in posted[0]
     assert "`docs/broken.md`: UnicodeDecodeError" in posted[0]
     assert "1 stale line(s) found" in posted[0]        # the healthy target's finding is still reported
-    assert "one-click suggestion posted" in posted[0]
+    assert "fix committed to this branch" in posted[0]  # commit_fixes defaults to True, for any origin
 
 
 def test_run_pipeline_reports_a_target_whose_every_check_failed(monkeypatch, tmp_path):
@@ -231,11 +232,14 @@ def test_run_pipeline_returns_the_posted_summary_when_every_target_completes(mon
     assert "No drift detected" in result
 
 
-def test_run_pipeline_commits_on_agent_prs_only_when_commit_fixes_is_on(monkeypatch, tmp_path):
+@pytest.mark.parametrize("origin", [Origin.AGENT, Origin.HUMAN])
+def test_run_pipeline_commits_regardless_of_origin_unless_commit_fixes_is_off(monkeypatch, tmp_path, origin):
+    """A merge should include the doc fix whoever opened the PR: delivery
+    mode depends only on commit_fixes, never on origin."""
     finding = Finding(line="l", reason="r")
     pr, posted, _ = _run_pipeline_with(
         monkeypatch, tmp_path, {"README.md": "l\n"},
-        lambda contents: ({"README.md": [finding]}, {}), origin=Origin.AGENT)
+        lambda contents: ({"README.md": [finding]}, {}), origin=origin)
     with patch.object(pipeline, "commit_fixes_to_branch", return_value=[Delivery.COMMITTED]) as commit:
         run_pipeline(str(tmp_path), RunOptions(commit_fixes=True))
         run_pipeline(str(tmp_path), RunOptions(commit_fixes=False))

@@ -10,7 +10,7 @@ inputs:
     default: ${{ github.token }}
   commit_fixes:
     description: >-
-      Commit fixes directly onto agent-authored PR branches (needs `contents: write`).
+      Commit fixes directly onto the PR branch, whoever opened it (needs `contents: write`).
       Set to 'false' to deliver every fix as a review suggestion instead, and drop that permission.
     required: false
     default: 'true'

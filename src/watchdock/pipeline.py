@@ -24,7 +24,7 @@ from watchdock.claims import DEFAULT_ENSEMBLE_SIZE, check_claims_against_targets
 from watchdock.errors import PipelineError
 from watchdock.fixes import commit_fixes_to_branch, draft_fix, post_pr_suggestion
 from watchdock.github_api import detect_pr_origin, get_diff, get_file_at, get_pr_context
-from watchdock.models import DeliveryMode, Finding, Origin
+from watchdock.models import DeliveryMode, Finding
 from watchdock.report import build_run_summary, post_run_summary_safely
 from watchdock.targets import discover_targets
 
@@ -36,7 +36,7 @@ class RunOptions:
     """Per-run knobs, passed as one object so call sites can't misorder them."""
     ensemble_size: int = DEFAULT_ENSEMBLE_SIZE
     max_workers: int | None = None      # None: size pools to the NIM concurrency cap
-    commit_fixes: bool = True           # False: never commit, even on agent PRs
+    commit_fixes: bool = True           # False: never commit; always deliver review suggestions instead
     pr_number: int | None = None        # None: take the PR from the event payload
 
 
@@ -77,12 +77,14 @@ def read_targets(repo_root: str, targets: list[str]) -> tuple[dict[str, str], di
     return contents, errors
 
 
-def resolve_delivery_mode(origin: Origin, commit_fixes: bool) -> DeliveryMode:
-    """Agent-authored PRs get direct commits, unless the operator turned that
-    off; everyone else gets review suggestions."""
-    if origin == Origin.AGENT and commit_fixes:
-        return DeliveryMode.COMMIT
-    return DeliveryMode.SUGGEST
+def resolve_delivery_mode(commit_fixes: bool) -> DeliveryMode:
+    """Every PR gets fixes committed straight to its branch by default,
+    whoever opened it — a merge then includes the doc fix with no manual
+    step. commit_fixes=False turns that off entirely, delivering every fix
+    as a review suggestion instead (or a plain comment, when GitHub can't
+    attach a suggestion to a line outside the PR's own diff — the usual case
+    for doc drift caused by a change elsewhere)."""
+    return DeliveryMode.COMMIT if commit_fixes else DeliveryMode.SUGGEST
 
 
 def draft_fixes(target_path: str, findings: list[Finding], max_workers: int | None = None) -> list[Finding]:
@@ -147,7 +149,7 @@ def run_pipeline(repo_root: str, options: RunOptions = DEFAULT_OPTIONS) -> str:
         claims, contents, n=options.ensemble_size, max_workers=options.max_workers)
     failed_targets.update(check_errors)
 
-    mode = resolve_delivery_mode(origin, options.commit_fixes)
+    mode = resolve_delivery_mode(options.commit_fixes)
     for target_path, findings in findings_by_target.items():
         if not findings:
             continue
