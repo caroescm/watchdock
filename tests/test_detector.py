@@ -8,6 +8,7 @@ import pytest
 
 pytest.importorskip("nat", reason="watchdoc_detector requires nvidia-nat")
 
+from watchdoc.models import Delivery, Finding, Origin  # noqa: E402
 from watchdoc_detector import watchdoc_detector as det  # noqa: E402
 
 
@@ -69,15 +70,16 @@ def test_process_target_commits_all_fixes_for_agent_pr_in_one_commit(tmp_path):
     (tmp_path / "AGENTS.md").write_text("Use `requests`.\nRun `make test`.\n")
     repo, pr = _FakeRepo(), _FakePR()
     findings = [
-        {"line": "Use `requests`.", "type": "semantic staleness", "reason": "httpx now"},
-        {"line": "Run `make test`.", "type": "broken reference", "reason": "pytest now"},
+        Finding(line="Use `requests`.", type="semantic staleness", reason="httpx now"),
+        Finding(line="Run `make test`.", type="broken reference", reason="pytest now"),
     ]
 
     with patch.object(det, "check_claims_against_target", return_value=findings), \
          patch.object(det, "draft_fix", side_effect=["Use `httpx`.", "Run `pytest`."]):
-        result = det._process_target("AGENTS.md", ["c"], repo, pr, "agent", str(tmp_path), 3)
+        result = det._process_target("AGENTS.md", ["c"], repo, pr, Origin.AGENT, str(tmp_path), 3)
 
-    assert [f["delivery"] for f in result] == ["committed", "committed"]
+    assert [f.delivery for f in result] == [Delivery.COMMITTED, Delivery.COMMITTED]
+    assert [f.fix for f in result] == ["Use `httpx`.", "Run `pytest`."]
     assert len(repo.updates) == 1
     assert repo.updates[0]["content"] == "Use `httpx`.\nRun `pytest`.\n"
 
@@ -87,7 +89,7 @@ def test_process_target_reads_from_the_given_repo_root_and_uses_ensemble_size(tm
     repo, pr = _FakeRepo(), _FakePR()
 
     with patch.object(det, "check_claims_against_target", return_value=[]) as check:
-        det._process_target("README.md", ["c"], repo, pr, "human", str(tmp_path), 5)
+        det._process_target("README.md", ["c"], repo, pr, Origin.HUMAN, str(tmp_path), 5)
 
     check.assert_called_once_with(["c"], "README.md", "hello\n", n=5)
 
@@ -98,8 +100,8 @@ def _run_pipeline_with(monkeypatch, targets, process_side_effect):
     monkeypatch.setattr(det, "get_pr_context", lambda pr_number=None: (_FakeRepo(), pr))
     monkeypatch.setattr(det, "get_diff", lambda pr: [{"filename": "a.py", "patch": "+x"}])
     monkeypatch.setattr(det, "discover_targets", lambda root: targets)
-    monkeypatch.setattr(det, "detect_pr_origin", lambda pr: "human")
-    monkeypatch.setattr(det, "extract_claims", lambda diff: "CLAIM: something changed")
+    monkeypatch.setattr(det, "detect_pr_origin", lambda pr: Origin.HUMAN)
+    monkeypatch.setattr(det, "extract_claims", lambda diff: ["something changed"])
     monkeypatch.setattr(det, "_process_target", process_side_effect)
     monkeypatch.setattr(det, "post_run_summary_safely", lambda pr, summary: posted.append(summary))
     return pr, posted
@@ -111,7 +113,7 @@ def test_run_pipeline_reports_a_failed_target_and_still_posts_summary_then_fails
     def process(target_path, *args):
         if target_path == "docs/broken.md":
             raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
-        return [{"line": "l", "type": "t", "reason": "r", "fix": "f", "delivery": "suggestion_posted"}]
+        return [Finding(line="l", type="t", reason="r", fix="f", delivery=Delivery.SUGGESTION_POSTED)]
 
     _, posted = _run_pipeline_with(monkeypatch, ["README.md", "docs/broken.md"], process)
 

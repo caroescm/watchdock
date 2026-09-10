@@ -1,5 +1,6 @@
 import logging
 
+from watchdoc.models import Delivery
 from watchdoc.nim_client import chat_completion
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
 
     if line_number is None:
         pr.create_issue_comment(fallback_body)
-        return "fallback_comment"
+        return Delivery.FALLBACK_COMMENT
 
     try:
         # Build the suggestion fence by hand (instead of as_suggestion=True)
@@ -67,10 +68,10 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
             path=target_path,
             line=line_number,
         )
-        return "suggestion_posted"
+        return Delivery.SUGGESTION_POSTED
     except Exception:
         pr.create_issue_comment(fallback_body)
-        return "fallback_comment"
+        return Delivery.FALLBACK_COMMENT
 
 
 def apply_fix(content, stale_line, fix_text):
@@ -88,13 +89,13 @@ def commit_fixes_to_branch(repo, pr, target_path, target_content, fixes):
     agent-authored PRs (see detect_pr_origin) — the reviewer still sees the
     fix as part of the PR before merge, just without an extra manual step.
 
-    `fixes` is a list of finding dicts carrying 'line', 'fix', and optionally
-    'type' and 'reason'. Returns one delivery status per fix, in order:
+    `fixes` is a list of Finding objects whose `fix` is already drafted.
+    Returns one Delivery per fix, in order:
 
-    - "committed": the replacement is in the commit.
-    - "not_applied_no_match": the stale line wasn't found verbatim in the
+    - COMMITTED: the replacement is in the commit.
+    - NOT_APPLIED_NO_MATCH: the stale line wasn't found verbatim in the
       file as it stood after the earlier fixes, so it was skipped.
-    - "commit_failed": the line matched but GitHub refused the commit (a fork
+    - COMMIT_FAILED: the line matched but GitHub refused the commit (a fork
       PR whose branch isn't in this repo, a read-only token, a branch that
       moved). The fix is delivered as a review suggestion instead so it still
       reaches the reviewer.
@@ -110,13 +111,13 @@ def commit_fixes_to_branch(repo, pr, target_path, target_content, fixes):
     applied = []  # (index, finding) for fixes that matched
     content = target_content
     for index, finding in enumerate(fixes):
-        updated = apply_fix(content, finding["line"], finding["fix"])
+        updated = apply_fix(content, finding.line, finding.fix)
         if updated is None:
-            statuses.append("not_applied_no_match")
+            statuses.append(Delivery.NOT_APPLIED_NO_MATCH)
             continue
         content = updated
         applied.append((index, finding))
-        statuses.append("committed")
+        statuses.append(Delivery.COMMITTED)
 
     if not applied:
         return statuses
@@ -135,15 +136,15 @@ def commit_fixes_to_branch(repo, pr, target_path, target_content, fixes):
                        target_path, pr.head.ref, exc_info=True)
         for index, finding in applied:
             post_pr_suggestion(
-                pr, target_path, target_content, finding["line"], finding["fix"],
-                finding_type=finding.get("type", "drift"), reason=finding.get("reason", ""),
+                pr, target_path, target_content, finding.line, finding.fix,
+                finding_type=finding.type, reason=finding.reason,
             )
-            statuses[index] = "commit_failed"
+            statuses[index] = Delivery.COMMIT_FAILED
         return statuses
 
     changes = "\n\n".join(
-        f"**{finding.get('type', 'drift')}** — {finding.get('reason', '')}\n\n"
-        f"**Old:**\n> {finding['line']}\n\n**New:**\n> {finding['fix']}"
+        f"**{finding.type}** — {finding.reason}\n\n"
+        f"**Old:**\n> {finding.line}\n\n**New:**\n> {finding.fix}"
         for _, finding in applied
     )
     try:

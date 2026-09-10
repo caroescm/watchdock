@@ -26,9 +26,10 @@ from nat.plugin_api import register_function
 from pydantic import Field
 
 from watchdoc import nim_client
-from watchdoc.claims import check_claims_against_target, extract_claims, parse_claims
+from watchdoc.claims import check_claims_against_target, extract_claims
 from watchdoc.fixes import commit_fixes_to_branch, draft_fix, post_pr_suggestion
 from watchdoc.github_api import detect_pr_origin, get_diff, get_pr_context
+from watchdoc.models import Origin
 from watchdoc.report import build_run_summary, post_run_summary_safely
 from watchdoc.targets import discover_targets
 
@@ -84,8 +85,8 @@ def parse_pr_number(task):
 
 def _process_target(target_path, claims, repo, pr, origin, repo_root, ensemble_size):
     """Runs the full check -> fix -> deliver flow for one target file and
-    returns the delivered findings (each finding dict gains 'fix' and
-    'delivery'). Targets are independent of each other (different files), so
+    returns the delivered findings (each Finding gains `fix` and
+    `delivery`). Targets are independent of each other (different files), so
     this is safe to run concurrently across targets rather than one at a time."""
     with open(os.path.join(repo_root, target_path), encoding="utf-8") as f:
         target_content = f.read()
@@ -99,20 +100,20 @@ def _process_target(target_path, claims, repo, pr, origin, repo_root, ensemble_s
     logger.info("Merged findings for %s: %s", target_path, findings)
 
     for finding in findings:
-        finding["fix"] = draft_fix(target_path, finding["line"], finding["reason"])
+        finding.fix = draft_fix(target_path, finding.line, finding.reason)
 
-    if origin == "agent":
+    if origin == Origin.AGENT:
         # All fixes for this file go into one commit, applied to one running
         # copy of the content; committing per finding from the original
         # content would make each commit revert the previous one.
         statuses = commit_fixes_to_branch(repo, pr, target_path, target_content, findings)
         for finding, status in zip(findings, statuses):
-            finding["delivery"] = status
+            finding.delivery = status
     else:
         for finding in findings:
-            finding["delivery"] = post_pr_suggestion(
-                pr, target_path, target_content, finding["line"], finding["fix"],
-                finding_type=finding.get("type", "drift"), reason=finding["reason"],
+            finding.delivery = post_pr_suggestion(
+                pr, target_path, target_content, finding.line, finding.fix,
+                finding_type=finding.type, reason=finding.reason,
             )
 
     return findings
@@ -121,10 +122,10 @@ def _process_target(target_path, claims, repo, pr, origin, repo_root, ensemble_s
 def _format_target_report(target_path, findings):
     lines = [f"=== {target_path} ==="]
     for finding in findings:
-        lines.append(f"- [{finding.get('type', '?')}] {finding['line']}")
-        lines.append(f"  reason: {finding['reason']}")
-        lines.append(f"  fix: {finding['fix']}")
-        lines.append(f"  delivery: {finding['delivery']}")
+        lines.append(f"- [{finding.type}] {finding.line}")
+        lines.append(f"  reason: {finding.reason}")
+        lines.append(f"  fix: {finding.fix}")
+        lines.append(f"  delivery: {finding.delivery}")
     return "\n".join(lines)
 
 
@@ -147,11 +148,8 @@ def run_pipeline(repo_root, ensemble_size=3, pr_number=None):
     origin = detect_pr_origin(pr)
     logger.info("PR origin: %s", origin)
 
-    claims_raw = extract_claims(diff)
-    logger.info("Extracted claims:\n%s", claims_raw)
-
-    claims = parse_claims(claims_raw)
-    logger.info("Parsed %d individual claim(s)", len(claims))
+    claims = extract_claims(diff)
+    logger.info("Extracted %d claim(s): %s", len(claims), claims)
 
     if not claims:
         post_run_summary_safely(pr, build_run_summary(origin, targets, [], {}))

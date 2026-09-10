@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
+from watchdoc.models import Finding
 from watchdoc.claims import (
     parse_findings,
     parse_claims,
@@ -29,9 +30,9 @@ def test_parse_findings_single_finding():
     findings = parse_findings(text)
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "Always use `requests` for HTTP calls."
-    assert findings[0]["type"] == "semantic staleness"
-    assert findings[0]["reason"] == "Code now uses httpx instead."
+    assert findings[0].line == "Always use `requests` for HTTP calls."
+    assert findings[0].type == "semantic staleness"
+    assert findings[0].reason == "Code now uses httpx instead."
 
 
 def test_parse_findings_multiple_findings():
@@ -47,8 +48,8 @@ def test_parse_findings_multiple_findings():
     findings = parse_findings(text)
 
     assert len(findings) == 2
-    assert findings[0]["line"] == "first stale line"
-    assert findings[1]["line"] == "second stale line"
+    assert findings[0].line == "first stale line"
+    assert findings[1].line == "second stale line"
 
 
 def test_parse_findings_drops_incomplete_blocks():
@@ -65,7 +66,7 @@ def test_parse_findings_drops_incomplete_blocks():
     findings = parse_findings(text)
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "a real finding"
+    assert findings[0].line == "a real finding"
 
 
 def test_parse_findings_filters_unaffected_na_lines():
@@ -81,7 +82,7 @@ def test_parse_findings_filters_unaffected_na_lines():
     findings = parse_findings(text)
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "real finding"
+    assert findings[0].line == "real finding"
 
 
 def test_format_diff_joins_multiple_files():
@@ -117,16 +118,16 @@ def test_extract_claims_short_circuits_without_api_call_when_diff_fully_filtered
     irrelevant (test files, LICENSE, etc.) — this is testable without a
     live API key precisely because it should never reach the API."""
     diff = [{"filename": "LICENSE", "patch": "+MIT License"}]
-    assert extract_claims(diff) == "NONE"
+    assert extract_claims(diff) == []
 
 
 def test_merge_findings_deduplicates_identical_lines_across_samples():
     """Simulates the ensemble case: 3 independent samples where the same
     real finding shows up in some but not all of them — union should catch
     it without duplicating it."""
-    sample_a = [{"line": "Always use `requests` for HTTP calls.", "type": "semantic staleness", "reason": "r1"}]
+    sample_a = [Finding(line="Always use `requests` for HTTP calls.", type="semantic staleness", reason="r1")]
     sample_b = []  # this sample missed it
-    sample_c = [{"line": "Always use `requests` for HTTP calls.", "type": "semantic staleness", "reason": "r3"}]
+    sample_c = [Finding(line="Always use `requests` for HTTP calls.", type="semantic staleness", reason="r3")]
 
     merged = _merge_findings([sample_a, sample_b, sample_c])
 
@@ -134,8 +135,8 @@ def test_merge_findings_deduplicates_identical_lines_across_samples():
 
 
 def test_merge_findings_keeps_distinct_findings_from_different_samples():
-    sample_a = [{"line": "first stale line", "type": "semantic staleness", "reason": "r1"}]
-    sample_b = [{"line": "second stale line", "type": "broken reference", "reason": "r2"}]
+    sample_a = [Finding(line="first stale line", type="semantic staleness", reason="r1")]
+    sample_b = [Finding(line="second stale line", type="broken reference", reason="r2")]
 
     merged = _merge_findings([sample_a, sample_b])
 
@@ -154,13 +155,13 @@ def test_ensemble_degrades_gracefully_when_one_sample_fails():
     sample succeeds."""
     with patch("watchdoc.claims.check_claim_against_target", side_effect=[
         ConnectionError("boom"),
-        "LINE: a real finding\nTYPE: semantic staleness\nREASON: r\n",
-        "NONE",
+        [Finding(line="a real finding", type="semantic staleness", reason="r")],
+        [],
     ]):
         findings = check_claim_against_target_ensemble("claims", "README.md", "content", n=3)
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "a real finding"
+    assert findings[0].line == "a real finding"
 
 
 def test_ensemble_raises_when_all_samples_fail():
@@ -192,7 +193,7 @@ def test_parse_findings_drops_placeholder_and_symbol_only_lines():
     findings = parse_findings(text)
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "a real finding"
+    assert findings[0].line == "a real finding"
 
 
 def test_parse_claims_none_response():
@@ -245,15 +246,15 @@ def test_check_claims_against_target_unions_findings_across_claims():
     be unioned (and deduped) in the final result."""
     def fake_check(claim, target_path, target_content):
         if "first" in claim:
-            return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
-        return "LINE: stale line B\nTYPE: broken reference\nREASON: r2\n"
+            return [Finding(line="stale line A", type="semantic staleness", reason="r1")]
+        return [Finding(line="stale line B", type="broken reference", reason="r2")]
 
     with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
         findings = check_claims_against_target(
             ["first claim", "second claim"], "README.md", "content", n=2
         )
 
-    lines = sorted(f["line"] for f in findings)
+    lines = sorted(f.line for f in findings)
     assert lines == ["stale line A", "stale line B"]
 
 
@@ -263,7 +264,7 @@ def test_check_claims_against_target_drops_a_fully_failed_claim():
     def fake_check(claim, target_path, target_content):
         if "doomed" in claim:
             raise ConnectionError("boom")
-        return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
+        return [Finding(line="stale line A", type="semantic staleness", reason="r1")]
 
     with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
         findings = check_claims_against_target(
@@ -271,10 +272,23 @@ def test_check_claims_against_target_drops_a_fully_failed_claim():
         )
 
     assert len(findings) == 1
-    assert findings[0]["line"] == "stale line A"
+    assert findings[0].line == "stale line A"
 
 
 def test_check_claims_against_target_raises_when_every_claim_fails():
     with patch("watchdoc.claims.check_claim_against_target", side_effect=ConnectionError("boom")):
         with pytest.raises(RuntimeError, match="README.md"):
             check_claims_against_target(["a", "b"], "README.md", "content", n=2)
+
+
+def test_parse_findings_returns_finding_objects_with_unset_fix_and_delivery():
+    findings = parse_findings("LINE: l\nTYPE: broken reference\nREASON: r\n")
+
+    assert findings == [Finding(line="l", reason="r", type="broken reference")]
+    assert findings[0].fix is None and findings[0].delivery is None
+
+
+def test_parse_findings_defaults_type_when_model_omits_it():
+    findings = parse_findings("LINE: l\nREASON: r\n")
+
+    assert findings[0].type == "drift"

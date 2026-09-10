@@ -1,3 +1,4 @@
+from watchdoc.models import Delivery, Finding, Origin
 from watchdoc.report import SUMMARY_MARKER, build_run_summary, upsert_run_summary, post_run_summary_safely
 
 
@@ -23,16 +24,18 @@ def test_build_run_summary_clean_run_reports_what_was_checked():
 
 def test_build_run_summary_lists_findings_with_reason_fix_and_delivery():
     findings = {
-        "README.md": [{
-            "line": "Always use `requests` for HTTP calls.",
-            "type": "semantic staleness",
-            "reason": "Code now uses httpx.",
-            "fix": "Always use `httpx` for HTTP calls.",
-            "delivery": "suggestion_posted",
-        }],
+        "README.md": [Finding(
+            line="Always use `requests` for HTTP calls.",
+            type="semantic staleness",
+            reason="Code now uses httpx.",
+            fix="Always use `httpx` for HTTP calls.",
+            delivery=Delivery.SUGGESTION_POSTED,
+        )],
         "AGENTS.md": [],
     }
-    summary = build_run_summary("agent", ["README.md", "AGENTS.md"], ["a claim"], findings)
+    summary = build_run_summary(Origin.AGENT, ["README.md", "AGENTS.md"], ["a claim"], findings)
+
+    assert "**PR origin:** agent" in summary  # the enum renders as its value, not Origin.AGENT
 
     assert "1 stale line(s) found" in summary
     assert "semantic staleness" in summary
@@ -56,11 +59,10 @@ def test_build_run_summary_reports_targets_that_could_not_be_checked():
 
 
 def test_build_run_summary_labels_commit_failed_delivery():
-    findings = {"AGENTS.md": [{
-        "line": "old", "type": "semantic staleness", "reason": "r",
-        "fix": "new", "delivery": "commit_failed",
-    }]}
-    summary = build_run_summary("agent", ["AGENTS.md"], ["a claim"], findings)
+    findings = {"AGENTS.md": [Finding(
+        line="old", type="semantic staleness", reason="r", fix="new", delivery=Delivery.COMMIT_FAILED,
+    )]}
+    summary = build_run_summary(Origin.AGENT, ["AGENTS.md"], ["a claim"], findings)
 
     assert "couldn't commit to this branch" in summary
 

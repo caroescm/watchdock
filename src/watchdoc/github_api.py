@@ -3,6 +3,8 @@ import os
 
 from github import Github
 
+from watchdoc.models import Origin
+
 
 def get_pr_context(pr_number=None):
     """Returns (repo, pr) for the PR this run is about.
@@ -51,23 +53,23 @@ AGENT_TRAILER_PATTERNS = [
 
 
 def detect_pr_origin_from_data(commit_messages, author_login=""):
-    """Pure logic, no API calls: returns 'agent' if commit messages or the
-    author login look like a known AI coding agent, else 'human'. Defaults
-    to 'human' whenever ambiguous — never guess 'agent'."""
+    """Pure logic, no API calls: Origin.AGENT if commit messages or the
+    author login look like a known AI coding agent, else Origin.HUMAN.
+    Defaults to HUMAN whenever ambiguous — never guess AGENT."""
     for message in commit_messages:
         lowered = message.lower()
         for pattern in AGENT_TRAILER_PATTERNS:
             if pattern in lowered:
-                return "agent"
+                return Origin.AGENT
 
     if (author_login or "").lower().endswith("[bot]"):
-        return "agent"
+        return Origin.AGENT
 
-    return "human"
+    return Origin.HUMAN
 
 
 def detect_pr_origin(pr):
-    """Reads a real PR's commits and author, returns 'agent' or 'human'."""
+    """Reads a real PR's commits and author, returns an Origin."""
     commit_messages = [c.commit.message for c in pr.get_commits()]
     author_login = pr.user.login if pr.user else ""
     return detect_pr_origin_from_data(commit_messages, author_login)

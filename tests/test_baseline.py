@@ -12,7 +12,7 @@ def test_catches_literal_removal():
     findings = deterministic_check(diff, target_content)
 
     assert len(findings) == 1
-    assert findings[0]["type"] == "broken reference"
+    assert findings[0].type == "broken reference"
 
 
 def test_does_not_flag_when_identifier_still_present():

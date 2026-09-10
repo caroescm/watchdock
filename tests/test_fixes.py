@@ -1,4 +1,5 @@
 from watchdoc.fixes import _find_line_number, apply_fix, commit_fixes_to_branch, post_pr_suggestion
+from watchdoc.models import Delivery, Finding
 
 
 def test_find_line_number_exact_match():
@@ -57,7 +58,7 @@ class _FakePR:
 
 
 def _fix(line, fix, type_="semantic staleness", reason="Code now uses httpx."):
-    return {"line": line, "fix": fix, "type": type_, "reason": reason}
+    return Finding(line=line, fix=fix, type=type_, reason=reason)
 
 
 def test_apply_fix_replaces_first_verbatim_occurrence_only():
@@ -78,7 +79,7 @@ def test_commit_fixes_to_branch_applies_replacement_when_line_matches():
         _fix("Always use `requests` for HTTP calls.", "Always use `httpx` for HTTP calls."),
     ])
 
-    assert statuses == ["committed"]
+    assert statuses == [Delivery.COMMITTED]
     assert "httpx" in repo.updated["content"]
     assert "requests" not in repo.updated["content"]
 
@@ -96,7 +97,7 @@ def test_commit_fixes_to_branch_applies_all_fixes_to_one_file_in_one_commit():
         _fix("Run `make test` before pushing.", "Run `pytest` before pushing.", "broken reference", "make target removed"),
     ])
 
-    assert statuses == ["committed", "committed"]
+    assert statuses == [Delivery.COMMITTED, Delivery.COMMITTED]
     assert repo.update_calls == 1
     assert repo.updated["content"] == "Always use `httpx` for HTTP calls.\nRun `pytest` before pushing.\n"
     assert "2 stale claim(s)" in repo.updated["message"]
@@ -132,7 +133,7 @@ def test_commit_fixes_to_branch_refuses_when_no_exact_match():
         _fix("This text does not appear anywhere in the file", "Some fix"),
     ])
 
-    assert statuses == ["not_applied_no_match"]
+    assert statuses == [Delivery.NOT_APPLIED_NO_MATCH]
     assert repo.update_calls == 0
     assert pr.issue_comments == []
 
@@ -147,7 +148,7 @@ def test_commit_fixes_to_branch_skips_unmatched_and_commits_the_rest():
         _fix("Always use `requests` for HTTP calls.", "Always use `httpx` for HTTP calls."),
     ])
 
-    assert statuses == ["not_applied_no_match", "committed"]
+    assert statuses == [Delivery.NOT_APPLIED_NO_MATCH, Delivery.COMMITTED]
     assert repo.update_calls == 1
 
 
@@ -163,7 +164,7 @@ def test_commit_fixes_to_branch_falls_back_to_suggestion_when_github_rejects_com
         _fix("Always use `requests` for HTTP calls.", "Always use `httpx` for HTTP calls."),
     ])
 
-    assert statuses == ["commit_failed"]
+    assert statuses == [Delivery.COMMIT_FAILED]
     assert len(pr.review_comments) == 1
     assert "```suggestion\nAlways use `httpx` for HTTP calls.\n```" in pr.review_comments[0]["body"]
 
@@ -180,7 +181,7 @@ def test_post_pr_suggestion_includes_type_and_reason_with_suggestion_fence():
         reason="Code now uses httpx.",
     )
 
-    assert result == "suggestion_posted"
+    assert result == Delivery.SUGGESTION_POSTED
     body = pr.review_comments[0]["body"]
     assert "semantic staleness" in body
     assert "Code now uses httpx." in body
@@ -202,6 +203,6 @@ def test_post_pr_suggestion_falls_back_to_comment_when_github_rejects_line():
         reason="Code now uses httpx.",
     )
 
-    assert result == "fallback_comment"
+    assert result == Delivery.FALLBACK_COMMENT
     assert len(pr.issue_comments) == 1
     assert "Code now uses httpx." in pr.issue_comments[0]

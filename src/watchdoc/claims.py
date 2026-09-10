@@ -2,6 +2,7 @@ import fnmatch
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from watchdoc.models import Finding
 from watchdoc.nim_client import chat_completion
 
 logger = logging.getLogger(__name__)
@@ -32,11 +33,18 @@ def format_diff(diff):
 
 
 def extract_claims(diff):
-    """Given a PR diff, ask the model what doc/instruction claims this change could affect.
+    """Given a PR diff, returns the list of doc/instruction claims this change
+    could affect, one string per claim. [] means nothing doc-relevant changed.
 
-    Output format is one CLAIM: block per claim (parsed by parse_claims) rather
-    than free-form prose: each claim is later checked against every target file
-    in its own independent call, so each one has to stand alone."""
+    Each claim is later checked against every target file in its own
+    independent call, so each one has to stand alone."""
+    return parse_claims(_request_claims(diff))
+
+
+def _request_claims(diff):
+    """The raw model call behind extract_claims: one CLAIM: block per claim,
+    or the literal NONE. Kept separate so the parser can be tested on real
+    model output without a network call."""
     relevant_diff = [entry for entry in diff if _is_relevant(entry["filename"])]
     if not relevant_diff:
         return "NONE"
@@ -61,7 +69,7 @@ Diff:
 
 
 def parse_claims(extract_result):
-    """Parses extract_claims's CLAIM: blocks into a list of individual claim
+    """Parses the model's CLAIM: blocks into a list of individual claim
     strings. Returns [] for a NONE response.
 
     Continuation lines (non-empty lines that don't start a new CLAIM:) are
@@ -90,13 +98,19 @@ def parse_claims(extract_result):
 
     claims = [c for c in claims if c]
     if not claims:
-        logger.warning("extract_claims output had no CLAIM: blocks; falling back to the whole output as one claim")
+        logger.warning("claim extraction output had no CLAIM: blocks; falling back to the whole output as one claim")
         return [text]
     return claims
 
 
 def check_claim_against_target(claim, target_path, target_content):
-    """One NIM call: does target_content still accurately describe the code, given one claim?
+    """One NIM call, parsed: the lines of target_content that one claim makes
+    inaccurate, as Finding objects. [] means the file is still accurate."""
+    return parse_findings(_request_check(claim, target_path, target_content))
+
+
+def _request_check(claim, target_path, target_content):
+    """The raw model call behind check_claim_against_target.
 
     Takes a single claim, not the whole extracted set: NVIDIA's free-tier NIM
     endpoint enforces a hard ~10-minute server-side generation cap (two real
@@ -132,35 +146,44 @@ REASON: <why it's now wrong>
 
 
 def parse_findings(check_result):
-    """Parses check_claim_against_target's LINE:/TYPE:/REASON: text into a list
-    of {line, type, reason} dicts. Returns [] for a NONE response."""
+    """Parses the model's LINE:/TYPE:/REASON: blocks into a list of Finding
+    objects. Returns [] for a NONE response."""
     if check_result.strip().upper() == "NONE":
         return []
 
-    findings = []
+    blocks = []
     current = {}
     for raw_line in check_result.splitlines():
         line = raw_line.strip()
         if line.startswith("LINE:"):
-            if current.get("line") and current.get("reason"):
-                findings.append(current)
+            if current:
+                blocks.append(current)
             current = {"line": line[len("LINE:"):].strip()}
         elif line.startswith("TYPE:"):
             current["type"] = line[len("TYPE:"):].strip()
         elif line.startswith("REASON:"):
             current["reason"] = line[len("REASON:"):].strip()
+    if current:
+        blocks.append(current)
 
-    # Only keep findings that have both a line and a reason — an incomplete
-    # block (e.g. the model didn't follow the format exactly) is dropped
-    # rather than crashing draft_fix downstream with a missing key.
-    if current.get("line") and current.get("reason"):
-        findings.append(current)
+    return [
+        Finding(line=b["line"], reason=b["reason"], type=b.get("type", "drift"))
+        for b in blocks if _is_real_finding(b)
+    ]
 
-    # Defensive filter: even though the prompt says not to, older responses
-    # sometimes still mention unaffected lines as "N/A" — drop those.
-    return [f for f in findings if "n/a" not in f.get("type", "").lower()
-            and "unaffected" not in f.get("type", "").lower()
-            and not _is_junk_line(f["line"])]
+
+def _is_real_finding(block):
+    """An incomplete block (no LINE or no REASON — the model didn't follow the
+    format) is dropped rather than crashing draft_fix downstream. So is a
+    block the model itself marked as unaffected ("N/A"), which older
+    responses still emit despite the prompt, and a line that can't be a real
+    quote from the file (see _is_junk_line)."""
+    if not block.get("line") or not block.get("reason"):
+        return False
+    type_ = block.get("type", "").lower()
+    if "n/a" in type_ or "unaffected" in type_:
+        return False
+    return not _is_junk_line(block["line"])
 
 
 def _is_junk_line(line):
@@ -188,7 +211,7 @@ def _merge_findings(list_of_finding_lists):
     seen_normalized = []
     for findings in list_of_finding_lists:
         for finding in findings:
-            norm = _normalize(finding["line"])
+            norm = _normalize(finding.line)
             if any(norm in s or s in norm for s in seen_normalized):
                 continue
             seen_normalized.append(norm)
@@ -228,18 +251,17 @@ def check_claim_against_target_ensemble(claim, target_path, target_content, n=3)
             executor.submit(check_claim_against_target, claim, target_path, target_content)
             for _ in range(n)
         ]
-        raw_results = []
+        samples = []
         for future in futures:
             try:
-                raw_results.append(future.result())
+                samples.append(future.result())
             except Exception:
                 logger.warning("Ensemble sample for %s failed and was dropped", target_path, exc_info=True)
 
-    if not raw_results:
+    if not samples:
         raise RuntimeError(f"All {n} ensemble samples failed for {target_path}; no result to report")
 
-    all_findings = [parse_findings(r) for r in raw_results]
-    return _merge_findings(all_findings)
+    return _merge_findings(samples)
 
 
 def check_claims_against_target(claims_list, target_path, target_content, n=3):

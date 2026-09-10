@@ -2,12 +2,13 @@
 Runs every case in cases.py through three approaches (deterministic baseline,
 single-prompt LLM, full Watchdoc pipeline) and reports precision/recall/F1 for each.
 """
+import sys
 import time
 
 from cases import CASES
 from baseline import deterministic_check
 from single_prompt import single_prompt_check
-from watchdoc.claims import extract_claims, parse_claims, check_claims_against_target, parse_findings
+from watchdoc.claims import extract_claims, check_claims_against_target
 
 
 def normalize(text):
@@ -21,7 +22,7 @@ def line_matches(expected_line, findings):
         return False
     expected_norm = normalize(expected_line)
     for finding in findings:
-        found_norm = normalize(finding.get("line", ""))
+        found_norm = normalize(finding.line)
         if expected_norm in found_norm or found_norm in expected_norm:
             return True
     return False
@@ -70,15 +71,14 @@ def run(case_ids=None):
 
         # --- Single-prompt LLM ---
         t0 = time.time()
-        sp_raw = single_prompt_check(diff, target_path, target_content)
-        sp_findings = parse_findings(sp_raw)
+        sp_findings = single_prompt_check(diff, target_path, target_content)
         score = score_case(case, sp_findings)
         results["single_prompt"].append(score)
         print(f"  single_prompt: {score} ({time.time()-t0:.1f}s)", flush=True)
 
         # --- Full pipeline (extract_claims -> per-claim 3x-ensemble checks, unioned) ---
         t0 = time.time()
-        claims = parse_claims(extract_claims(diff))
+        claims = extract_claims(diff)
         if not claims:
             full_findings = []
         else:

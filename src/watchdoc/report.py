@@ -8,26 +8,29 @@ information, and silence is indistinguishable from "didn't run".
 """
 import logging
 
+from watchdoc.models import Delivery
+
 logger = logging.getLogger(__name__)
 
 SUMMARY_MARKER = "<!-- watchdoc-run-summary -->"
 
 _DELIVERY_LABELS = {
-    "committed": "🔧 fix committed to this branch",
-    "suggestion_posted": "💡 one-click suggestion posted",
-    "fallback_comment": "💬 explanation posted as a PR comment",
-    "not_applied_no_match": "⚠️ couldn't auto-apply (line not matched verbatim)",
-    "commit_failed": "⚠️ couldn't commit to this branch (fork PR or read-only token?) — "
-                     "posted as a suggestion instead",
+    Delivery.COMMITTED: "🔧 fix committed to this branch",
+    Delivery.SUGGESTION_POSTED: "💡 one-click suggestion posted",
+    Delivery.FALLBACK_COMMENT: "💬 explanation posted as a PR comment",
+    Delivery.NOT_APPLIED_NO_MATCH: "⚠️ couldn't auto-apply (line not matched verbatim)",
+    Delivery.COMMIT_FAILED: "⚠️ couldn't commit to this branch (fork PR or read-only token?) — "
+                            "posted as a suggestion instead",
 }
+assert set(_DELIVERY_LABELS) == set(Delivery), "every Delivery needs a label"
 
 
 def build_run_summary(origin, targets, claims, findings_by_target, failed_targets=None):
     """Pure markdown builder, no API calls.
 
-    findings_by_target: {target_path: [finding dicts with 'fix' and
-    'delivery' added by the delivery step]}. Targets with no findings map
-    to an empty list.
+    findings_by_target: {target_path: [Finding, ...]} with `fix` and
+    `delivery` already filled in. Targets with no findings map to an empty
+    list.
 
     failed_targets: {target_path: error message} for targets whose check
     crashed. They are reported rather than hidden, so a run that couldn't
@@ -72,11 +75,11 @@ def build_run_summary(origin, targets, claims, findings_by_target, failed_target
             continue
         lines += ["", f"### `{target_path}`"]
         for f in findings:
-            delivery = _DELIVERY_LABELS.get(f.get("delivery", ""), f.get("delivery", "?"))
+            delivery = _DELIVERY_LABELS.get(f.delivery, "❔ not delivered")
             lines += [
-                f"- **{f.get('type', 'drift')}** — {f['reason']}",
-                f"  - Stale: {f['line']}",
-                f"  - Fixed: {f.get('fix', '')}",
+                f"- **{f.type}** — {f.reason}",
+                f"  - Stale: {f.line}",
+                f"  - Fixed: {f.fix or ''}",
                 f"  - {delivery}",
             ]
 

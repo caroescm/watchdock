@@ -6,9 +6,11 @@ agent-instruction-file tool can do.
 """
 import re
 
+from watchdoc.models import Finding
+
 
 def deterministic_check(diff, target_content):
-    """Returns a list of {line, type, reason} findings, or [] if nothing's flagged.
+    """Returns a list of Finding objects, or [] if nothing's flagged.
 
     Approach: extract quoted `identifiers` (backtick-wrapped tokens) from each
     line of target_content, then check whether that identifier still appears
@@ -27,11 +29,11 @@ def deterministic_check(diff, target_content):
             if not re.search(r"[a-zA-Z_./-]", identifier):
                 continue
             if _identifier_removed_in_diff(identifier, diff_text):
-                findings.append({
-                    "line": line.strip(),
-                    "type": "broken reference",
-                    "reason": f"`{identifier}` no longer appears in the diff's changed content",
-                })
+                findings.append(Finding(
+                    line=line.strip(),
+                    type="broken reference",
+                    reason=f"`{identifier}` no longer appears in the diff's changed content",
+                ))
                 break  # one finding per line is enough
     return findings
 
