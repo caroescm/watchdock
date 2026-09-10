@@ -17,6 +17,7 @@ def test_config_defaults_mirror_the_core_defaults():
     assert config.temperature == nim_client.DEFAULT_SETTINGS.temperature
     assert config.nim_timeout_seconds == nim_client.DEFAULT_SETTINGS.timeout_seconds
     assert config.max_concurrent_nim_calls == nim_client.DEFAULT_SETTINGS.max_concurrent_requests
+    assert config.nim_stream_attempts == nim_client.DEFAULT_SETTINGS.max_stream_attempts
     assert config.ensemble_size == DEFAULT_ENSEMBLE_SIZE
     assert config.commit_fixes is True
     assert config.repo_root is None

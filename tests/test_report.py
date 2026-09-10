@@ -27,6 +27,17 @@ def test_build_run_summary_no_claims():
     assert "README.md" in summary
 
 
+def test_build_run_summary_reports_a_failed_extraction_instead_of_a_clean_bill():
+    """No claims because extraction died is the opposite of no claims because
+    the diff was harmless; the headline must not be the green one."""
+    summary = build_run_summary(Origin.HUMAN, ["README.md"], [], {},
+                                extraction_error="RemoteProtocolError: peer closed connection")
+
+    assert "Drift check could not run" in summary
+    assert "RemoteProtocolError: peer closed connection" in summary
+    assert "No doc-relevant changes" not in summary
+
+
 def test_build_run_summary_clean_run_reports_what_was_checked():
     summary = build_run_summary(
         Origin.HUMAN, ["README.md", "AGENTS.md"],

@@ -57,9 +57,14 @@ class WatchdockDetectorFunctionConfig(FunctionBaseConfig, name="watchdock_detect
         default=int(_DEFAULTS.timeout_seconds), ge=1,
         description="Per-request timeout. Thinking-mode calls have been observed to take ~19 minutes.",
     )
+    nim_stream_attempts: int = Field(
+        default=_DEFAULTS.max_stream_attempts, ge=1,
+        description="Whole-call attempts per NIM request when the server cuts a stream off mid-response. "
+                    "Each lost attempt on a thinking call can cost several minutes.",
+    )
     commit_fixes: bool = Field(
         default=True,
-        description="Commit fixes directly onto agent-authored PR branches. Needs `contents: write`; "
+        description="Commit fixes directly onto the PR branch, whoever opened it. Needs `contents: write`; "
                     "set false to deliver every fix as a review suggestion and drop that permission.",
     )
 
@@ -74,6 +79,7 @@ async def watchdock_detector_function(config: WatchdockDetectorFunctionConfig, b
         temperature=config.temperature,
         timeout_seconds=config.nim_timeout_seconds,
         max_concurrent_requests=config.max_concurrent_nim_calls,
+        max_stream_attempts=config.nim_stream_attempts,
     )
     repo_root = resolve_repo_root(config.repo_root)
     options = RunOptions(
@@ -86,9 +92,9 @@ async def watchdock_detector_function(config: WatchdockDetectorFunctionConfig, b
         """
         Runs the full Watchdock pipeline against a PR: discovers target files,
         fetches the diff, extracts claims, checks each target for drift, and for
-        every real finding drafts a fix and delivers it — as a suggestion comment
-        for human-authored PRs, or a direct commit for agent-authored PRs. The PR
-        comes from the GitHub event payload, or from a "#<number>" in the input.
+        every real finding drafts a fix and delivers it — committed straight to the
+        PR branch by default, or as a review suggestion when commit_fixes is off.
+        The PR comes from the GitHub event payload, or from a "#<number>" in the input.
         Returns the summary posted to the PR.
         """
         return await asyncio.to_thread(

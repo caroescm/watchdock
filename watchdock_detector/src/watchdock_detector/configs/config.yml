@@ -7,4 +7,5 @@ workflow:
   # ensemble_size: 3           # independent samples per claim/target check
   # max_concurrent_nim_calls: 8
   # nim_timeout_seconds: 1500
+  # nim_stream_attempts: 4     # whole-call retries when NIM cuts a stream off mid-response
   # commit_fixes: true         # false = suggestions only, no `contents: write` needed

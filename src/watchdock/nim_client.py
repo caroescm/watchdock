@@ -50,7 +50,10 @@ MAX_CONCURRENT_REQUESTS = 8
 # Whole-call attempts. The OpenAI client's own retries (CLIENT_MAX_RETRIES)
 # only cover failures of the initial request; a stream that fails after a
 # 200 has to be redone from the start, since a partial stream can't resume.
-MAX_STREAM_ATTEMPTS = 2
+# Four rather than two: a live run had the same extraction call cut off
+# mid-stream on both of two attempts, and extraction has no ensemble to
+# absorb a lost call (BENCHMARK.md, "Operational findings").
+MAX_STREAM_ATTEMPTS = 4
 CLIENT_MAX_RETRIES = 3
 
 # Thinking calls need room for the chain of thought plus the answer;

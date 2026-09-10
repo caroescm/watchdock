@@ -36,6 +36,7 @@ def build_run_summary(
     claims: list[str],
     findings_by_target: dict[str, list[Finding]],
     failed_targets: dict[str, str] | None = None,
+    extraction_error: str | None = None,
 ) -> str:
     """Pure markdown builder, no API calls.
 
@@ -46,6 +47,10 @@ def build_run_summary(
     ``failed_targets``: {target_path: error message} for targets that could
     not be read, checked or delivered. They are reported rather than hidden,
     so a run that couldn't check a file never reads as "this file is fine".
+
+    ``extraction_error``: set when claim extraction itself failed, so no
+    target was checked at all. Without it an empty ``claims`` would read as
+    "no doc-relevant changes", which is the opposite of what happened.
     """
     failed_targets = failed_targets or {}
     total = sum(len(f) for f in findings_by_target.values())
@@ -54,6 +59,10 @@ def build_run_summary(
     if not targets:
         headline = ("ℹ️ **No target files found** — this repository has no README, docs "
                     "directory or agent-instruction file to check, and no `.watchdock.yml` naming any.")
+    elif extraction_error:
+        headline = ("⚠️ **Drift check could not run** — extracting claims from this diff failed "
+                    f"({extraction_error}), so no target was checked. See the Action log for the traceback; "
+                    "re-running the job usually succeeds.")
     elif not claims:
         headline = ("✅ **No doc-relevant changes** — nothing in this diff could "
                     "affect docs or agent-instruction files.")

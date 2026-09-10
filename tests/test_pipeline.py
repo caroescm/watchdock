@@ -176,6 +176,24 @@ def test_run_pipeline_posts_a_summary_even_when_there_are_no_targets(monkeypatch
     assert "No target files found" in result
 
 
+def test_run_pipeline_posts_a_summary_then_fails_when_claim_extraction_dies(monkeypatch, tmp_path):
+    """Seen live: NIM cut the extraction stream off on every attempt. With no
+    claims nothing can be checked, but the PR must still get a comment that
+    says the check did not run, not silence and not 'no doc-relevant changes'."""
+    _, posted, calls = _run_pipeline_with(monkeypatch, tmp_path, {"README.md": "l\n"}, ({}, {}))
+    monkeypatch.setattr(pipeline, "extract_claims",
+                        lambda diff: (_ for _ in ()).throw(ConnectionError("peer closed connection")))
+
+    with pytest.raises(PipelineError, match="ConnectionError: peer closed connection"):
+        run_pipeline(str(tmp_path))
+
+    assert calls == []
+    assert len(posted) == 1
+    assert "Drift check could not run" in posted[0]
+    assert "ConnectionError: peer closed connection" in posted[0]
+    assert "No doc-relevant changes" not in posted[0]
+
+
 def test_run_pipeline_reports_an_unreadable_target_and_still_posts_summary_then_fails(monkeypatch, tmp_path):
     """One target failing must not take the others down or skip the summary.
     The run fails only after everything checkable was checked and reported."""

@@ -8,7 +8,9 @@ Failure policy, consistent with the layers below it (a dropped ensemble
 sample or claim is a missing vote): a target that can't be read, checked
 or delivered is recorded and reported, the other targets still complete,
 the summary is still posted, and only then does the run fail, so the
-Action goes red without hiding what was checked.
+Action goes red without hiding what was checked. If claim extraction itself
+fails there is nothing to check; the summary says exactly that, then the
+run fails.
 
 The NAT entry point in the ``watchdock_detector`` package is a thin adapter
 over ``run_pipeline``; everything testable lives here.
@@ -139,7 +141,13 @@ def run_pipeline(repo_root: str, options: RunOptions = DEFAULT_OPTIONS) -> str:
     if not targets:
         return _post_summary(pr, build_run_summary(origin, [], [], {}))
 
-    claims = extract_claims(get_diff(pr))
+    try:
+        claims = extract_claims(get_diff(pr))
+    except Exception as e:  # noqa: BLE001 — whatever it was, the PR must say the check didn't run
+        logger.exception("Extracting claims from the diff failed")
+        error = f"{type(e).__name__}: {e}"
+        _post_summary(pr, build_run_summary(origin, targets, [], {}, extraction_error=error))
+        raise PipelineError(f"Watchdock could not extract claims from the diff: {error}") from e
     logger.info("Extracted %d claim(s): %s", len(claims), claims)
     if not claims:
         return _post_summary(pr, build_run_summary(origin, targets, [], {}))
