@@ -1,3 +1,6 @@
+import pytest
+
+from watchdoc.errors import ConfigError
 from watchdoc.targets import discover_targets
 
 
@@ -117,3 +120,29 @@ def test_legacy_config_name_still_read_with_a_warning(tmp_path, caplog):
 
     assert result == ["CONTRIBUTING.md"]
     assert ".watchdoc.yml" in caplog.text
+
+
+def test_watchdoc_yml_ignore_accepts_globs(tmp_path):
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    (docs / "api.md").write_text("# api")
+    (docs / "changelog.md").write_text("# changelog")
+    (tmp_path / "README.md").write_text("# readme")
+    (tmp_path / ".watchdoc.yml").write_text("ignore:\n  - docs/*\n")
+
+    assert discover_targets(str(tmp_path)) == ["README.md"]
+
+
+def test_watchdoc_yml_with_a_scalar_targets_value_is_a_config_error(tmp_path):
+    """A bare string would otherwise iterate as single characters."""
+    (tmp_path / ".watchdoc.yml").write_text("targets: README.md\n")
+
+    with pytest.raises(ConfigError, match="'targets' must be a list"):
+        discover_targets(str(tmp_path))
+
+
+def test_watchdoc_yml_that_is_not_a_mapping_is_a_config_error(tmp_path):
+    (tmp_path / ".watchdoc.yml").write_text("- README.md\n")
+
+    with pytest.raises(ConfigError, match="must be a mapping"):
+        discover_targets(str(tmp_path))

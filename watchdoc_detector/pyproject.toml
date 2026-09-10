@@ -10,7 +10,7 @@ requires-python = ">=3.11,<3.14"
 classifiers = ["Programming Language :: Python"]
 dependencies = [
   "nvidia-nat~=1.8",
-  "watchdoc",
+  "watchdoc==0.1.0",
 ]
 
 [project.entry-points.'nat.components']

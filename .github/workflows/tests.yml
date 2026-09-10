@@ -1,0 +1,27 @@
+name: Tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install both packages with the action's pinned constraints
+        run: |
+          set -euo pipefail
+          pip install -c constraints.txt -e ".[dev]" -e watchdoc_detector
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: python -m pytest tests -v

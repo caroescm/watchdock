@@ -1,7 +1,8 @@
 import pytest
 
+from watchdoc.errors import ConfigError
 from watchdoc.github_api import NO_PATCH_PLACEHOLDER, detect_pr_origin_from_data, get_diff, get_pr_context
-from watchdoc.models import Origin
+from watchdoc.models import DiffEntry, Origin
 
 
 def test_human_pr_no_trailers():
@@ -35,6 +36,26 @@ def test_trailer_must_start_a_line_and_name_a_known_agent():
     assert detect_pr_origin_from_data(["Fix\n\nCo-Authored-By: Alice <a@example.com>"], "x") == Origin.HUMAN
 
 
+def test_ambiguous_defaults_to_human():
+    """Never default to auto-commit when origin is unclear."""
+    assert detect_pr_origin_from_data([], "") == Origin.HUMAN
+    assert detect_pr_origin_from_data([None], "") == Origin.HUMAN
+
+
+def test_trailer_detection_is_case_insensitive():
+    messages = ["Add feature\n\nCO-AUTHORED-BY: CLAUDE <noreply@anthropic.com>"]
+    assert detect_pr_origin_from_data(messages, "caroescm") == Origin.AGENT
+
+
+def test_one_agent_commit_among_many_human_commits_still_flags_agent():
+    messages = [
+        "Human commit one",
+        "Human commit two",
+        "Agent commit\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
+    ]
+    assert detect_pr_origin_from_data(messages, "caroescm") == Origin.AGENT
+
+
 class _FakeFile:
     def __init__(self, filename, patch):
         self.filename = filename
@@ -54,31 +75,10 @@ def test_get_diff_replaces_missing_patch_with_placeholder():
     the string 'None' must never reach the prompt."""
     pr = _FakeFilesPR([_FakeFile("a.py", "-old\n+new"), _FakeFile("logo.png", None)])
 
-    diff = get_diff(pr)
-
-    assert diff == [
-        {"filename": "a.py", "patch": "-old\n+new"},
-        {"filename": "logo.png", "patch": NO_PATCH_PLACEHOLDER},
+    assert get_diff(pr) == [
+        DiffEntry("a.py", "-old\n+new"),
+        DiffEntry("logo.png", NO_PATCH_PLACEHOLDER),
     ]
-
-
-def test_ambiguous_defaults_to_human():
-    """Never default to auto-commit when origin is unclear."""
-    assert detect_pr_origin_from_data([], "") == Origin.HUMAN
-
-
-def test_trailer_detection_is_case_insensitive():
-    messages = ["Add feature\n\nCO-AUTHORED-BY: CLAUDE <noreply@anthropic.com>"]
-    assert detect_pr_origin_from_data(messages, "caroescm") == Origin.AGENT
-
-
-def test_one_agent_commit_among_many_human_commits_still_flags_agent():
-    messages = [
-        "Human commit one",
-        "Human commit two",
-        "Agent commit\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
-    ]
-    assert detect_pr_origin_from_data(messages, "caroescm") == Origin.AGENT
 
 
 def test_get_pr_context_without_event_payload_or_pr_number_explains_what_to_do(monkeypatch):
@@ -86,5 +86,13 @@ def test_get_pr_context_without_event_payload_or_pr_number_explains_what_to_do(m
     monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
     monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
 
-    with pytest.raises(RuntimeError, match="PR #12"):
+    with pytest.raises(ConfigError, match="PR #12"):
         get_pr_context()
+
+
+def test_get_pr_context_names_the_missing_variable(monkeypatch):
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+
+    with pytest.raises(ConfigError, match="GITHUB_TOKEN"):
+        get_pr_context(pr_number=1)

@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
+  "ruff>=0.6",
 ]
 
 [tool.setuptools.packages.find]
@@ -26,3 +27,21 @@ testpaths = ["tests"]
 # benchmark/ is a set of scripts, not a package; expose it to the tests that
 # exercise the deterministic baseline without a sys.path hack in conftest.
 pythonpath = ["benchmark"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "watchdoc_detector/src", "benchmark", "tests"]
+
+[tool.ruff.lint]
+# BLE: every broad `except Exception` must carry a `# noqa: BLE001` with the
+# reason it is deliberate. B: common bug patterns, including zip() without strict.
+select = ["E", "F", "W", "B", "BLE", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# Prompt text and benchmark fixtures are data; wrapping them would change what the model sees.
+"src/watchdoc/prompts.py" = ["E501"]
+"benchmark/cases.py" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["watchdoc", "watchdoc_detector"]

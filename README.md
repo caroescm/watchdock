@@ -35,7 +35,7 @@ jobs:
       pull-requests: write   # post suggestions and the summary comment
       contents: write        # only if commit_fixes stays 'true' (direct commits on agent PRs)
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: caroescm/watchdoc@main
         with:
           nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
@@ -65,7 +65,7 @@ Existing tools each solve one narrow slice of this — deterministic checkers (E
 
 On every PR, Watchdoc:
 
-1. **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.watchdoc.yml`)
+1. **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**`. A `.watchdoc.yml` at the repo root can replace that list (`targets:`) or subtract from it (`ignore:`); both take glob patterns such as `docs/generated/*`
 2. **Extracts claims** from the diff — a reasoning-model pass that lists, one by one, what this change could make wrong in documentation
 3. **Checks each claim against each target file independently** — every claim gets its own focused model calls (a 3-sample parallel ensemble per claim, findings unioned), distinguishing *semantic staleness* (still valid-looking text, now wrong) from a *broken reference* (something that flat-out no longer exists)
 4. **Drafts a fix** for each real finding
@@ -85,7 +85,8 @@ If nothing is affected, the summary comment simply reports a green "no drift det
   - *3x ensembles:* the model is measurably nondeterministic at `temperature=0` — the same call sometimes catches a real finding and sometimes misses it. Three samples unioned hedge that; a failed sample is a missing vote, not a fatal error.
   - *Streaming + whole-call retries:* non-streaming calls got connection-reset at ~4.5 minutes of silence by an intermediate proxy; mid-stream server errors aren't covered by SDK retries. Both observed in real runs, both handled.
   - *Bounded concurrency:* a global cap on simultaneous NIM requests, so (claims × ensemble × targets) fan-out can't stampede the free-tier API.
-- **Source layout:** `src/watchdoc/` (the core package: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `report.py`, `nim_client.py`), `watchdoc_detector/` (the NAT workflow package, which depends on `watchdoc`), `tests/` (pytest suite, no network needed), `benchmark/` (eval harness — see below).
+- **Source layout:** `src/watchdoc/` is the core package, host-independent: `pipeline.py` (the whole run), `github_api.py`, `targets.py`, `diff.py`, `claims.py`, `prompts.py`, `parsing.py`, `fixes.py`, `report.py`, `nim_client.py`, plus `models.py` (the frozen dataclasses and enums every stage shares), `env.py` (every environment variable, in one place) and `errors.py`. `watchdoc_detector/` is the NAT workflow package, a thin adapter that depends on `watchdoc`. `tests/` is the pytest suite (no network needed) and `benchmark/` the eval harness (see below).
+- **Dependency footprint:** the core package needs only PyGithub, openai and pyyaml. The NAT host pulls in a much larger tree (langchain, boto3, pandas and friends, about 160 packages in `constraints.txt`); that is the cost of running as a NAT workflow rather than a bare script.
 
 ## Benchmark
 
@@ -112,9 +113,10 @@ pip install -e ".[dev]" -e watchdoc_detector
 
 The single `pip install` resolves both local packages together: `watchdoc` (core logic plus the `dev` extra for pytest) and `watchdoc_detector` (the NAT entry point, which depends on `watchdoc`). The action itself installs with `-c constraints.txt`, which pins every transitive dependency; refresh it with `pip freeze --exclude-editable > constraints.txt` after a deliberate upgrade.
 
-Run the test suite (no API key needed — these test pure logic, not live model calls):
+Run the linter and the test suite (no API key needed — these test pure logic, not live model calls). The same two commands run in CI on Python 3.11, 3.12 and 3.13 for every push and PR (`.github/workflows/tests.yml`):
 
 ```bash
+ruff check .
 python3 -m pytest tests/ -v
 ```
 
@@ -140,7 +142,7 @@ Every run of this repo's own CI (`.github/workflows/watchdoc.yml`) exercises the
 - No per-language AST parsing — Watchdoc reasons from raw diff/file text, which is what makes it language-agnostic, but is less precise than a formal parser for very large diffs.
 - **Latency is real, if much improved.** Measured on real CI runs: a clean PR completes in ~5–6 minutes; a PR with drift (detection + fix drafting + delivery) takes ~9–12. Reasoning-mode calls are doing real inference work — every shortcut tried (disabling thinking, capping the ensemble wait) measurably cost recall and was reverted. See [`BENCHMARK.md`](project-docs/BENCHMARK.md) for the full latency investigation.
 - **API cost per PR is higher** than a single-call design: the detection step runs 3 ensemble samples per extracted claim in exchange for reliability.
-- **Precision on judgment-call lines isn't perfect**: the model can occasionally flag a line whose truth is arguable (e.g. a competitive claim about other tools). Delivery fails safe — a fix that doesn't match verbatim, or changes nothing, is refused rather than applied — and everything it does is explained on the PR.
+- **Precision on judgment-call lines isn't perfect**: the model can occasionally flag a line whose truth is arguable (e.g. a competitive claim about other tools). Delivery fails safe — a stale line is only ever matched as a whole line, never as a fragment inside a longer one, and a fix that doesn't match or changes nothing is refused rather than applied — and everything it does is explained on the PR.
 - **A bounded time budget with honest "incomplete" reporting** (post confirmed findings, flag remaining analysis as incomplete rather than silently timing out) is a concrete, low-risk next step — see [`BENCHMARK.md`](project-docs/BENCHMARK.md) for this and other latency ideas that were evaluated and not built, with the reasoning why.
 
 ## License

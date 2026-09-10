@@ -3,7 +3,7 @@
 Keeping them here means a change to what the model is asked is a diff in
 this file alone, reviewable apart from the logic that sends it. Each
 function returns the finished prompt string; the parsers that read the
-replies live next to the callers in claims.py.
+replies live in parsing.py.
 
 The output formats are load-bearing: parse_claims reads the CLAIM: blocks
 and parse_findings reads the LINE:/TYPE:/REASON: blocks, so a format change
@@ -11,7 +11,7 @@ here needs the matching parser change there.
 """
 
 
-def extract_claims_prompt(diff_text):
+def extract_claims_prompt(diff_text: str) -> str:
     """What in this diff could make a documented claim false? One CLAIM:
     block per claim, or NONE."""
     return f"""You are reviewing a code change to figure out what it might make false in project documentation or AI-agent instruction files (like README.md, AGENTS.md, CLAUDE.md).
@@ -30,7 +30,7 @@ Diff:
 """
 
 
-def check_claim_prompt(claim, target_path, target_content):
+def check_claim_prompt(claim: str, target_path: str, target_content: str) -> str:
     """Which lines of this file does one claim make wrong? One
     LINE:/TYPE:/REASON: block per finding, or NONE."""
     return f"""You are checking whether a documentation or agent-instruction file is still accurate, given a claim about what a code change affected.
@@ -57,7 +57,7 @@ REASON: <why it's now wrong>
 """
 
 
-def draft_fix_prompt(target_path, stale_line, reason):
+def draft_fix_prompt(target_path: str, stale_line: str, reason: str) -> str:
     """Rewrite one stale line. Reply is the corrected text only."""
     return f"""You are fixing one line in `{target_path}` that is now inaccurate.
 
