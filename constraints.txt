@@ -31,7 +31,7 @@ MarkupSafe==3.0.3
 mdurl==0.1.2
 nest-asyncio2==1.7.2
 networkx==3.6.1
-numpy==2.5.2
+numpy==2.3.5
 nvidia-nat==1.8.0
 nvidia-nat-atif==1.8.0
 nvidia-nat-core==1.8.0

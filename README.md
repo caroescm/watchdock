@@ -107,7 +107,7 @@ This 100% wasn't the first result — it came from diagnosing and fixing a real 
 ```bash
 git clone https://github.com/caroescm/watchdoc.git
 cd watchdoc
-python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-nat doesn't support 3.14 yet)
+python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-nat does not support 3.14 yet)
 pip install -e ".[dev]" -e watchdoc_detector
 ```
 
