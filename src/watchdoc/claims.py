@@ -68,38 +68,70 @@ Diff:
     return chat_completion(prompt)
 
 
+def _is_none_response(text):
+    return not text.strip() or text.strip().upper() == "NONE"
+
+
+def _parse_blocks(text, start_key, keys):
+    """The one block parser behind parse_claims and parse_findings.
+
+    The model is asked for blocks of `KEY: value` lines. A block starts at
+    every `start_key:` line; any other listed key sets that field of the
+    current block. Rules, applied identically to both formats:
+
+    - keys match case-insensitively (`Line:` and `LINE:` are the same);
+    - a non-empty line that doesn't start with a listed key is a
+      continuation of the most recent field, folded in with a space, so a
+      value the model wraps across lines survives intact;
+    - blank lines are ignored, they carry no structure;
+    - a field line before the first start_key belongs to no block and is
+      dropped.
+
+    Returns a list of dicts keyed by the listed key names.
+    """
+    key_names = {k.lower(): k for k in keys}
+    blocks = []
+    current = None
+    field = None
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        prefix, colon, rest = line.partition(":")
+        name = key_names.get(prefix.strip().lower()) if colon else None
+        if name is not None:
+            if name == start_key:
+                if current is not None:
+                    blocks.append(current)
+                current = {}
+            if current is None:
+                continue
+            current[name] = rest.strip()
+            field = name
+        elif current is not None and field is not None:
+            current[field] = f"{current[field]} {line}".strip()
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
 def parse_claims(extract_result):
     """Parses the model's CLAIM: blocks into a list of individual claim
     strings. Returns [] for a NONE response.
 
-    Continuation lines (non-empty lines that don't start a new CLAIM:) are
-    folded into the current claim, so a claim wrapped across lines survives.
     If the output is non-NONE but contains no CLAIM: blocks at all (the model
     ignored the format), the whole output is returned as a single claim
     rather than silently dropping everything — the downstream check prompt
     handled free-form claim prose fine for the project's entire history, so
     a format miss degrades to the old behavior instead of a false 'no drift'."""
-    text = extract_result.strip()
-    if not text or text.upper() == "NONE":
+    if _is_none_response(extract_result):
         return []
 
-    claims = []
-    current = None
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
-        if line.upper().startswith("CLAIM:"):
-            if current:
-                claims.append(current)
-            current = line[len("CLAIM:"):].strip()
-        elif current is not None and line:
-            current += " " + line
-    if current:
-        claims.append(current)
-
-    claims = [c for c in claims if c]
+    claims = [block["CLAIM"] for block in _parse_blocks(extract_result, "CLAIM", ("CLAIM",))
+              if block.get("CLAIM")]
     if not claims:
         logger.warning("claim extraction output had no CLAIM: blocks; falling back to the whole output as one claim")
-        return [text]
+        return [extract_result.strip()]
     return claims
 
 
@@ -148,42 +180,29 @@ REASON: <why it's now wrong>
 def parse_findings(check_result):
     """Parses the model's LINE:/TYPE:/REASON: blocks into a list of Finding
     objects. Returns [] for a NONE response."""
-    if check_result.strip().upper() == "NONE":
+    if _is_none_response(check_result):
         return []
 
-    blocks = []
-    current = {}
-    for raw_line in check_result.splitlines():
-        line = raw_line.strip()
-        if line.startswith("LINE:"):
-            if current:
-                blocks.append(current)
-            current = {"line": line[len("LINE:"):].strip()}
-        elif line.startswith("TYPE:"):
-            current["type"] = line[len("TYPE:"):].strip()
-        elif line.startswith("REASON:"):
-            current["reason"] = line[len("REASON:"):].strip()
-    if current:
-        blocks.append(current)
-
+    blocks = _parse_blocks(check_result, "LINE", ("LINE", "TYPE", "REASON"))
     return [
-        Finding(line=b["line"], reason=b["reason"], type=b.get("type", "drift"))
+        Finding(line=b["LINE"], reason=b["REASON"], type=b.get("TYPE", "drift"))
         for b in blocks if _is_real_finding(b)
     ]
 
 
 def _is_real_finding(block):
-    """An incomplete block (no LINE or no REASON — the model didn't follow the
-    format) is dropped rather than crashing draft_fix downstream. So is a
-    block the model itself marked as unaffected ("N/A"), which older
-    responses still emit despite the prompt, and a line that can't be a real
-    quote from the file (see _is_junk_line)."""
-    if not block.get("line") or not block.get("reason"):
+    """The single validity rule for a parsed finding block. An incomplete
+    block (no LINE or no REASON — the model didn't follow the format) is
+    dropped rather than crashing draft_fix downstream. So is a block the
+    model itself marked as unaffected ("N/A"), which older responses still
+    emit despite the prompt, and a line that can't be a real quote from the
+    file (see _is_junk_line)."""
+    if not block.get("LINE") or not block.get("REASON"):
         return False
-    type_ = block.get("type", "").lower()
+    type_ = block.get("TYPE", "").lower()
     if "n/a" in type_ or "unaffected" in type_:
         return False
-    return not _is_junk_line(block["line"])
+    return not _is_junk_line(block["LINE"])
 
 
 def _is_junk_line(line):

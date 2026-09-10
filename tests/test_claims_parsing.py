@@ -4,6 +4,7 @@ import pytest
 
 from watchdoc.models import Finding
 from watchdoc.claims import (
+    _parse_blocks,
     parse_findings,
     parse_claims,
     format_diff,
@@ -292,3 +293,46 @@ def test_parse_findings_defaults_type_when_model_omits_it():
     findings = parse_findings("LINE: l\nREASON: r\n")
 
     assert findings[0].type == "drift"
+
+
+def test_parse_blocks_is_one_parser_for_both_formats():
+    """CLAIM and LINE/TYPE/REASON output go through the same rules: keys are
+    case-insensitive, wrapped values fold into the last field, blank lines
+    carry no structure, and a field before the first block is dropped."""
+    text = (
+        "TYPE: orphan, no LINE yet\n"
+        "line: Always use `requests`\n"
+        "  for HTTP calls.\n"
+        "Type: semantic staleness\n"
+        "\n"
+        "REASON: Code now\n"
+        "uses httpx.\n"
+        "LINE: second\n"
+        "REASON: r2\n"
+    )
+    blocks = _parse_blocks(text, "LINE", ("LINE", "TYPE", "REASON"))
+
+    assert blocks == [
+        {"LINE": "Always use `requests` for HTTP calls.", "TYPE": "semantic staleness", "REASON": "Code now uses httpx."},
+        {"LINE": "second", "REASON": "r2"},
+    ]
+
+
+def test_parse_findings_keys_are_case_insensitive_like_parse_claims():
+    findings = parse_findings("Line: l\ntype: broken reference\nReason: r\n")
+
+    assert findings == [Finding(line="l", reason="r", type="broken reference")]
+
+
+def test_parse_findings_folds_wrapped_reason():
+    findings = parse_findings(
+        "LINE: l\nTYPE: semantic staleness\nREASON: the flag was renamed to\n`--request-timeout` in v2.\n"
+    )
+
+    assert findings[0].reason == "the flag was renamed to `--request-timeout` in v2."
+
+
+def test_parse_findings_value_containing_a_colon_is_not_a_key():
+    findings = parse_findings("LINE: Note: run `make test` first\nREASON: r\n")
+
+    assert findings[0].line == "Note: run `make test` first"
