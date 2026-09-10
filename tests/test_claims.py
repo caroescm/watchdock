@@ -22,6 +22,46 @@ def test_extract_claims_makes_no_model_call_when_the_diff_is_fully_filtered():
     chat.assert_not_called()
 
 
+def test_extract_claims_returns_empty_on_an_explicit_none_without_retrying():
+    with patch("watchdock.claims.nim_client.chat_completion", return_value="NONE") as chat:
+        assert extract_claims([DiffEntry("README.md", "+x")]) == []
+
+    chat.assert_called_once()
+
+
+def test_extract_claims_uses_a_well_formed_first_reply_without_retrying():
+    with patch("watchdock.claims.nim_client.chat_completion", return_value="CLAIM: a real claim") as chat:
+        assert extract_claims([DiffEntry("README.md", "+x")]) == ["a real claim"]
+
+    chat.assert_called_once()
+
+
+def test_extract_claims_retries_once_when_the_first_reply_ignores_the_format():
+    """Seen live: a single-sample extraction call sometimes rambles instead of
+    emitting CLAIM:/NONE, the same temperature-0.0 nondeterminism the check
+    step hedges against with an ensemble. One retry recovers it."""
+    leaked_reasoning = "Since I don't have the actual documentation files, I have to infer what this affects..."
+    with patch("watchdock.claims.nim_client.chat_completion",
+               side_effect=[leaked_reasoning, "CLAIM: the real claim"]) as chat:
+        assert extract_claims([DiffEntry("README.md", "+x")]) == ["the real claim"]
+
+    assert chat.call_count == 2
+
+
+def test_extract_claims_falls_back_to_one_claim_per_file_when_every_attempt_is_unparseable():
+    """Never surfaces the model's raw (possibly leaked-reasoning) text as a
+    claim, even as a last resort: the fallback is grounded in the diff's own
+    filenames instead."""
+    leaked_reasoning = "Let me think step by step about what documentation this could touch..."
+    with patch("watchdock.claims.nim_client.chat_completion", return_value=leaked_reasoning) as chat:
+        claims = extract_claims([DiffEntry("src/AuthContext.jsx", "+x")])
+
+    assert chat.call_count == 2
+    assert len(claims) == 1
+    assert "src/AuthContext.jsx" in claims[0]
+    assert leaked_reasoning not in claims[0]
+
+
 def test_merge_findings_deduplicates_identical_lines_across_samples():
     """The ensemble case: the same real finding shows up in some samples but
     not all. The union catches it once."""

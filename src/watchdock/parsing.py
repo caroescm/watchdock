@@ -6,15 +6,29 @@ The formats themselves are defined in prompts.py; a change there needs the
 matching change here.
 """
 import logging
+import re
 
 from watchdock.models import Finding, FindingType
 
 logger = logging.getLogger(__name__)
 
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def strip_thinking(text: str) -> str:
+    """Drops any ``<think>...</think>`` block some model/endpoint combinations
+    inline into the answer content instead of routing it through a separate
+    channel. A no-op when there's no such block, so it's safe to apply to
+    every reply unconditionally. An unclosed ``<think>`` (the model never
+    got to a closing tag) is left alone rather than guessed at, since the
+    format parser below already tolerates stray prose before the first
+    recognized key."""
+    return _THINK_BLOCK.sub("", text).strip()
+
 
 def is_none_response(text: str) -> bool:
     """True for the literal NONE the prompts ask for, or an empty reply."""
-    stripped = text.strip()
+    stripped = strip_thinking(text)
     return not stripped or stripped.upper() == "NONE"
 
 
@@ -63,21 +77,24 @@ def parse_blocks(text: str, start_key: str, keys: tuple[str, ...]) -> list[dict[
 
 def parse_claims(extract_result: str) -> list[str]:
     """Parses the model's CLAIM: blocks into individual claim strings.
-    Returns [] for a NONE response.
+    Returns [] for a NONE response, and also for a non-NONE reply that
+    contains no CLAIM: blocks at all (the model ignored the format).
 
-    If the output is non-NONE but contains no CLAIM: blocks at all (the model
-    ignored the format), the whole output is returned as a single claim
-    rather than silently dropping everything: the check prompt handles
-    free-form claim prose, so a format miss degrades to one broad claim
-    instead of a false 'no drift'."""
+    That second case used to fall back to returning the whole raw reply as
+    one claim. In practice that raw text is sometimes the model's own
+    leaked reasoning ("I don't have the actual files, so I have to
+    infer...") rather than anything about the diff — passing that on
+    produces both a nonsensical claim shown verbatim on the PR and,
+    because it names nothing concrete, a false "no drift" from the check
+    step that receives it. Returning [] instead lets the caller (see
+    claims.extract_claims) decide how to recover, e.g. by retrying."""
     if is_none_response(extract_result):
         return []
 
-    claims = [block["CLAIM"] for block in parse_blocks(extract_result, "CLAIM", ("CLAIM",))
+    claims = [block["CLAIM"] for block in parse_blocks(strip_thinking(extract_result), "CLAIM", ("CLAIM",))
               if block.get("CLAIM")]
     if not claims:
-        logger.warning("claim extraction output had no CLAIM: blocks; using the whole output as one claim")
-        return [extract_result.strip()]
+        logger.warning("claim extraction output had no CLAIM: blocks and was not NONE; treating as empty")
     return claims
 
 
@@ -87,7 +104,7 @@ def parse_findings(check_result: str) -> list[Finding]:
     if is_none_response(check_result):
         return []
 
-    blocks = parse_blocks(check_result, "LINE", ("LINE", "TYPE", "REASON"))
+    blocks = parse_blocks(strip_thinking(check_result), "LINE", ("LINE", "TYPE", "REASON"))
     return [
         Finding(line=b["LINE"], reason=b["REASON"], kind=FindingType.from_model_output(b.get("TYPE")))
         for b in blocks if _is_real_finding(b)

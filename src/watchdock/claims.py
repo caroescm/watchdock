@@ -12,7 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from watchdock import nim_client
 from watchdock.diff import format_diff, relevant_entries
 from watchdock.models import DiffEntry, Finding
-from watchdock.parsing import lines_overlap, normalize_line, parse_claims, parse_findings
+from watchdock.parsing import is_none_response, lines_overlap, normalize_line, parse_claims, parse_findings
 from watchdock.prompts import check_claim_prompt, extract_claims_prompt
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,15 @@ logger = logging.getLogger(__name__)
 # union of samples buys recall for free. Measured; see BENCHMARK.md.
 DEFAULT_ENSEMBLE_SIZE = 3
 
+# Claim extraction is a single call, not an ensemble, so it has no built-in
+# redundancy against the same temperature-0.0 nondeterminism the check step
+# hedges with ensembling: sometimes the model ignores the CLAIM:/NONE format
+# and rambles instead (seen live: a reply reasoning about not having "the
+# actual documentation files", which the extraction step never has by
+# design). One retry recovers most of those for free, since a fresh sample
+# usually formats correctly.
+MAX_EXTRACTION_ATTEMPTS = 2
+
 FindingsByTarget = dict[str, list[Finding]]
 ErrorsByTarget = dict[str, str]
 
@@ -30,16 +39,29 @@ def extract_claims(diff: list[DiffEntry]) -> list[str]:
     """The doc/instruction claims this diff could affect, one string per
     claim. [] means nothing doc-relevant changed. Each claim is later checked
     on its own, so each one has to stand alone."""
-    return parse_claims(_request_claims(diff))
-
-
-def _request_claims(diff: list[DiffEntry]) -> str:
-    """The raw model call behind extract_claims: CLAIM: blocks or NONE. No
-    call at all when nothing relevant changed."""
     relevant = relevant_entries(diff)
     if not relevant:
-        return "NONE"
-    return nim_client.chat_completion(extract_claims_prompt(format_diff(relevant)))
+        return []
+
+    prompt = extract_claims_prompt(format_diff(relevant))
+    for attempt in range(1, MAX_EXTRACTION_ATTEMPTS + 1):
+        raw = nim_client.chat_completion(prompt)
+        if is_none_response(raw):
+            return []
+        claims = parse_claims(raw)
+        if claims:
+            return claims
+        logger.warning("claim extraction attempt %d/%d ignored the CLAIM:/NONE format (%d-char reply)%s",
+                        attempt, MAX_EXTRACTION_ATTEMPTS, len(raw),
+                        "; retrying" if attempt < MAX_EXTRACTION_ATTEMPTS else "")
+
+    # Last resort after every attempt came back unparseable: fall back to one
+    # claim per changed file, grounded in the diff itself rather than in
+    # whatever the model said — never the model's raw (possibly leaked
+    # reasoning) text, which the check step and the PR comment would
+    # otherwise show verbatim.
+    return [f"`{entry.filename}` changed in this diff; check whether any documented claim referencing it "
+            f"(commands, config keys, values, described behavior) is now stale." for entry in relevant]
 
 
 def check_claim_against_target(claim: str, target_path: str, target_content: str) -> list[Finding]:

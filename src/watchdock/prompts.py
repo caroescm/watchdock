@@ -18,10 +18,12 @@ def extract_claims_prompt(diff_text: str) -> str:
 Given the diff below, list any specific claims this change could affect: library/dependency choices, CLI commands, config keys, function signatures, file/module locations, described behavior, or stated conventions.
 For each one, briefly describe what changed and what kind of documented claim it might now contradict.
 
-Respond with one block per claim, with a blank line between blocks, in exactly this format:
+You do not have the documentation or instruction files in front of you at this step, and you do not need them — you are only listing what the diff could affect, not confirming that a target file actually says so. That confirmation happens in a later, separate step. Do not mention that you lack the files, do not ask for them, and do not explain your reasoning process.
+
+Respond with ONLY one block per claim, with a blank line between blocks, in exactly this format and nothing else — no preamble, no reasoning, no closing remarks:
 CLAIM: <what changed and what documented claim it could now contradict>
 
-Each CLAIM must be fully self-contained — it will later be checked against documentation on its own, without the other claims or this diff for context — so name the specific files, symbols, commands, or values involved rather than referring to "the change above" or "see previous".
+Each CLAIM must be fully self-contained — it will later be checked against documentation on its own, without the other claims or this diff for context — so name the specific files, symbols, commands, or values involved rather than referring to "the change above" or "see previous". A changed numeric or config value (a timeout, an interval, a default) is exactly as reportable as a renamed function or a changed CLI flag.
 
 If nothing in the diff seems relevant to documentation or agent instructions, respond with exactly: NONE
 
