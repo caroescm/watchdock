@@ -26,12 +26,14 @@ class Delivery(StrEnum):
     """How one finding's fix reached the PR."""
     COMMITTED = "committed"
     SUGGESTION_POSTED = "suggestion_posted"
-    FALLBACK_COMMENT = "fallback_comment"
+    # No one-click suggestion could be attached (line outside the PR diff, or
+    # not found verbatim); the fix is carried by the run summary alone.
+    IN_SUMMARY = "in_summary"
     NOT_APPLIED_NO_MATCH = "not_applied_no_match"
     NOT_APPLIED_NO_CHANGE = "not_applied_no_change"
     # The commit was refused (fork PR, read-only token, moved branch) and the
     # fix was re-delivered through the suggestion path, which itself may have
-    # ended as a review suggestion or a plain PR comment.
+    # ended as a review suggestion or as a summary-only entry.
     COMMIT_FAILED = "commit_failed"
 
 

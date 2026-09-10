@@ -21,11 +21,12 @@ SUMMARY_MARKER = "<!-- watchdock-run-summary -->"
 DELIVERY_LABELS: dict[Delivery, str] = {
     Delivery.COMMITTED: "🔧 fix committed to this branch",
     Delivery.SUGGESTION_POSTED: "💡 one-click suggestion posted",
-    Delivery.FALLBACK_COMMENT: "💬 explanation posted as a PR comment",
+    Delivery.IN_SUMMARY: "📝 fix listed here only: the stale line is outside this PR's diff, "
+                         "so GitHub can't attach a one-click suggestion to it",
     Delivery.NOT_APPLIED_NO_MATCH: "⚠️ not applied: the stale line wasn't found verbatim in the file",
     Delivery.NOT_APPLIED_NO_CHANGE: "⚠️ not applied: the drafted fix was identical to the stale line",
     Delivery.COMMIT_FAILED: "⚠️ couldn't commit to this branch; delivered as a review suggestion "
-                            "or PR comment instead (the Action log says why the commit was refused)",
+                            "or listed here instead (the Action log says why the commit was refused)",
 }
 UNDELIVERED_LABEL = "❔ not delivered (delivery for this file failed; see above)"
 

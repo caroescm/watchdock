@@ -74,39 +74,34 @@ def post_pr_suggestion(pr, target_path: str, target_content: str, finding: Findi
     checkout (the merge commit) can point at the wrong line when the base
     branch also changed the file.
 
-    Falls back to a plain PR comment carrying the same explanation if the
-    line can't be located (the model paraphrased instead of quoting), or if
-    GitHub rejects the review comment: review comments can only anchor to
-    lines inside the PR's diff, and a stale doc line usually isn't."""
+    If the line can't be located (the model paraphrased instead of quoting),
+    or GitHub rejects the review comment (review comments can only anchor to
+    lines inside the PR's diff, and a stale doc line usually isn't), nothing
+    extra is posted: the run summary already lists the stale line, the fix
+    and the reason, and it is edited in place on every run. A separate
+    comment per finding used to be posted here and piled up one copy per
+    push, since the drift persists until a human edits the file."""
     if finding.fix is None or is_noop_fix(finding.line, finding.fix):
         return Delivery.NOT_APPLIED_NO_CHANGE
 
-    explanation = _explanation(target_path, finding)
-    fallback_body = (
-        f"{explanation}\n\n**Stale line:**\n> {finding.line}\n\n"
-        f"**Suggested replacement:**\n> {finding.fix}"
-    )
-
     line_number = find_line_number(target_content, finding.line)
     if line_number is None:
-        pr.create_issue_comment(fallback_body)
-        return Delivery.FALLBACK_COMMENT
+        return Delivery.IN_SUMMARY
 
     try:
         # The suggestion fence is built by hand (instead of as_suggestion=True)
         # so the comment can carry the explanation above the one-click fix.
         pr.create_review_comment(
-            body=f"{explanation}\n\n```suggestion\n{finding.fix}\n```",
+            body=f"{_explanation(target_path, finding)}\n\n```suggestion\n{finding.fix}\n```",
             commit=pr.head.sha,
             path=target_path,
             line=line_number,
         )
         return Delivery.SUGGESTION_POSTED
-    except Exception:  # noqa: BLE001 — degrade to a plain comment, but say why
-        logger.warning("Review comment on %s:%s rejected; posting a plain PR comment instead",
+    except Exception:  # noqa: BLE001 — the summary carries the fix; say why the suggestion didn't
+        logger.warning("Review comment on %s:%s rejected; the fix is reported in the run summary only",
                        target_path, line_number, exc_info=True)
-        pr.create_issue_comment(fallback_body)
-        return Delivery.FALLBACK_COMMENT
+        return Delivery.IN_SUMMARY
 
 
 def commit_fixes_to_branch(repo, pr, target_path: str, target_content: str, findings: list[Finding]) -> list[Delivery]:

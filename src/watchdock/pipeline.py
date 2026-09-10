@@ -83,9 +83,9 @@ def resolve_delivery_mode(commit_fixes: bool) -> DeliveryMode:
     """Every PR gets fixes committed straight to its branch by default,
     whoever opened it — a merge then includes the doc fix with no manual
     step. commit_fixes=False turns that off entirely, delivering every fix
-    as a review suggestion instead (or a plain comment, when GitHub can't
-    attach a suggestion to a line outside the PR's own diff — the usual case
-    for doc drift caused by a change elsewhere)."""
+    as a review suggestion instead (or as an entry in the run summary only,
+    when GitHub can't attach a suggestion to a line outside the PR's own diff
+    — the usual case for doc drift caused by a change elsewhere)."""
     return DeliveryMode.COMMIT if commit_fixes else DeliveryMode.SUGGEST
 
 

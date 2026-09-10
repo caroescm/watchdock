@@ -160,28 +160,29 @@ def test_post_pr_suggestion_includes_kind_and_reason_with_suggestion_fence():
     assert "```suggestion\nAlways use `httpx` for HTTP calls.\n```" in posted["body"]
 
 
-def test_post_pr_suggestion_falls_back_to_comment_when_line_is_not_found():
+def test_post_pr_suggestion_leaves_an_unlocated_line_to_the_summary():
     pr = FakePR()
 
     result = post_pr_suggestion(pr, "README.md", "something else\n", _finding("paraphrased line", "fix"))
 
-    assert result == Delivery.FALLBACK_COMMENT
-    assert pr.review_comments == []
-    assert "paraphrased line" in pr.issue_comments[0] and "fix" in pr.issue_comments[0]
+    assert result == Delivery.IN_SUMMARY
+    assert pr.review_comments == [] and pr.issue_comments == []
 
 
-def test_post_pr_suggestion_falls_back_to_comment_when_github_rejects_line():
+def test_post_pr_suggestion_leaves_a_rejected_line_to_the_summary_without_posting_a_comment():
     """GitHub only allows review comments on lines inside the PR's diff; a
-    stale doc line usually isn't. A rejected review comment degrades to a
-    plain PR comment, not a crash."""
+    stale doc line usually isn't. Seen live: a per-finding fallback comment
+    here was re-posted on every push, one identical copy per run, because the
+    drift persists until a human edits the file. The summary (edited in
+    place) already carries the stale line, the fix and the reason, so nothing
+    else is posted."""
     pr = FakePR(review_comment_error=RuntimeError("422 line not in diff"))
     finding = _finding("Always use `requests` for HTTP calls.", "Always use `httpx` for HTTP calls.")
 
     result = post_pr_suggestion(pr, "README.md", "Always use `requests` for HTTP calls.\n", finding)
 
-    assert result == Delivery.FALLBACK_COMMENT
-    assert len(pr.issue_comments) == 1
-    assert "Code now uses httpx." in pr.issue_comments[0]
+    assert result == Delivery.IN_SUMMARY
+    assert pr.issue_comments == []
 
 
 def test_post_pr_suggestion_refuses_a_fix_that_changes_nothing():
