@@ -48,5 +48,5 @@ def test_cannot_catch_semantic_only_drift():
     target_content = "`--verbose` prints extra debug output for any command."
 
     # The flag "--verbose" is still present, so the naive checker sees no
-    # removal — this is exactly the gap Still's semantic reasoning fills.
+    # removal — this is exactly the gap Watchdoc's semantic reasoning fills.
     assert deterministic_check(diff, target_content) == []

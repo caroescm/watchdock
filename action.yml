@@ -1,4 +1,4 @@
-name: 'Still'
+name: 'Watchdoc'
 description: 'Catches semantic drift in docs and AI-agent instruction files on every PR'
 inputs:
   nvidia_api_key:
@@ -8,24 +8,29 @@ inputs:
     description: 'GitHub token for reading PRs and posting results'
     required: false
     default: ${{ github.token }}
+branding:
+  icon: 'eye'
+  color: 'orange'
 runs:
   using: 'composite'
   steps:
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: '3.12'
     - name: Install dependencies
       shell: bash
       run: |
+        set -euo pipefail
         pip install -r ${{ github.action_path }}/requirements.txt
-        pip install -e ${{ github.action_path }}/still_detector
-    - name: Run Still
+        pip install -e ${{ github.action_path }}/watchdoc_detector
+    - name: Run Watchdoc
       shell: bash
       env:
         NVIDIA_API_KEY: ${{ inputs.nvidia_api_key }}
         GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
+        set -euo pipefail
         nat run \
-          --config_file ${{ github.action_path }}/still_detector/src/still_detector/configs/config.yml \
+          --config_file ${{ github.action_path }}/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
           --input "check this PR"

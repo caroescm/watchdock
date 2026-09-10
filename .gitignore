@@ -5,3 +5,6 @@ __pycache__/
 .claude/
 .pytest_cache/
 .serena/
+.DS_Store
+.idea/
+.vscode/

@@ -1,6 +1,7 @@
 import logging
 import os
 import threading
+
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
@@ -50,7 +51,7 @@ _MAX_STREAM_RETRIES = 2
 # once (waiters just queue — every call still runs to completion, nothing
 # is abandoned, so it can't cost recall the way the reverted capped-wait
 # ensemble did).
-_MAX_CONCURRENT_REQUESTS = int(os.environ.get("STILL_MAX_CONCURRENT_NIM_CALLS", "8"))
+_MAX_CONCURRENT_REQUESTS = int(os.environ.get("WATCHDOC_MAX_CONCURRENT_NIM_CALLS", "8"))
 _request_slots = threading.BoundedSemaphore(_MAX_CONCURRENT_REQUESTS)
 
 

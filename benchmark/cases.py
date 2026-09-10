@@ -1,5 +1,5 @@
 """
-AgentTruth-Bench / Still-Bench eval cases.
+AgentTruth-Bench / Watchdoc-Bench eval cases.
 
 Each case represents one PR against benchmark/sample_repo/. `diff` is a list of
 {filename, patch} dicts, same shape as src/github_api.py's get_diff() returns.

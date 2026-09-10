@@ -1,4 +1,5 @@
 import os
+
 import yaml
 
 DEFAULT_INSTRUCTION_FILES = [
@@ -19,7 +20,7 @@ DEFAULT_DOC_DIRS = [
     "documentation",
 ]
 
-CONFIG_FILENAME = ".still.yml"
+CONFIG_FILENAME = ".still-config.yml"
 
 
 def discover_targets(repo_root):
