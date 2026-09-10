@@ -8,7 +8,7 @@ Built on **NVIDIA NeMo Agent Toolkit** and a **NIM-hosted Nemotron model**, for 
 
 ## See it in action
 
-A real PR in this repo renamed the config file `.still.yml` to `.still-config.yml` in code. Watchdoc detected that the README's description was now stale, recognized the PR as agent-authored, committed the one-line fix itself, and explained what it did:
+During development, a PR renamed the config file `.still.yml` to `.still-config.yml` in code. Watchdoc detected that the README's description was now stale, recognized the PR as agent-authored, committed the one-line fix itself, and explained what it did (this ran on an earlier, differently-named copy of this repo, so the original PR isn't browsable here — the commit and comment text below are unedited):
 
 > 🔧 **Watchdoc — semantic staleness**: committed a fix to `README.md` on this branch.
 >
@@ -133,7 +133,7 @@ Model, ensemble size, concurrency cap, timeout and the scanned checkout are all 
 
 ## Compatibility
 
-Every run of this repo's own CI (`.github/workflows/watchdoc.yml`) exercises the action end-to-end on `ubuntu-latest` — that's the only runner it's actually been tested on. It hasn't been run on `macos-latest` or `windows-latest`. Both `run:` steps in [`action.yml`](action.yml) declare `shell: bash` explicitly (composite steps don't inherit a default shell), so they should work on all three GitHub-hosted runners — Windows runners ship Git Bash — but the Python/`pip`/`nat` toolchain behavior on macOS and Windows hasn't been verified in CI. If you hit a runner-specific issue, please open one.
+This repo's own CI (`.github/workflows/watchdoc.yml`) is wired to exercise the action end-to-end on `ubuntu-latest` on every PR — the runner it was tested on during development. It hasn't been run on `macos-latest` or `windows-latest`. Both `run:` steps in [`action.yml`](action.yml) declare `shell: bash` explicitly (composite steps don't inherit a default shell), so they should work on all three GitHub-hosted runners — Windows runners ship Git Bash — but the Python/`pip`/`nat` toolchain behavior on macOS and Windows hasn't been verified in CI. If you hit a runner-specific issue, please open one.
 
 ## Known limitations / future work
 
