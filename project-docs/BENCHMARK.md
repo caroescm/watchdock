@@ -198,3 +198,31 @@ actually showed, rather than implemented on faith:
   3 baseline-proof cases) rather than a random sample.
 - **API cost per PR is now 3x higher** for the ensemble step specifically,
   trading NIM free-tier credits for reliability.
+
+## Scoring note (September 2026)
+
+`run_eval.score_case` used to count a drift case whose finding named the
+*wrong* line as a false negative only. It now also counts it as a false
+positive, since the flagged line is a false alarm. The precision figures
+above were computed under the old rule; in the runs recorded here no drift
+case produced a wrong-line finding, so the numbers stand, but rerun
+`benchmark/run_eval.py` rather than compare a future result to them
+directly.
+
+## Operational findings from live runs
+
+The code used to carry these as comments next to the constants they justify.
+They are the *reason* for each setting; the code now states only the rule and
+points here, so the history can't drift out from under the comment.
+
+| Setting / rule | What happened in a real run | Consequence |
+|---|---|---|
+| `nim_client._TIMEOUT_SECONDS = 1500` | One correct, non-truncated thinking-mode call took ~19 minutes in a triggered Action run. | The client timeout sits well above that, so a slow-but-right answer is not failed. |
+| `nim_client._MAX_RETRIES = 3` (OpenAI client's own initial-request retries) | Two separate runs hit a connection reset ~4–4.5 min into a call: once on a single `extract_claims` call (recovered on its one retry), once on all three ensemble calls at once (did not recover, crashed the run). Same timing with and without concurrency. | Raised from 1 so a single reset is not one unlucky retry away from taking down the ensemble. |
+| `nim_client._MAX_TOKENS_THINKING = 24000` | A diagnosed failure showed the model reasoning through a case correctly, then running out of budget mid-thought before emitting the structured answer. 8000 was not enough; NVIDIA's reference examples budget 16384 for the chain of thought alone. | Generous headroom for thinking calls; mechanical (thinking-off) calls keep a small budget (800). |
+| `nim_client._MAX_STREAM_RETRIES = 2` (whole-call retry) | A run got a clean 200, streamed for 10 minutes, then the server returned "Internal server error" mid-stream. The client's built-in retries only cover the initial request, so nothing retried it; `extract_claims` has no ensemble to fall back on, so the run died. | The whole streamed call is retried from scratch (a partial stream cannot be resumed), with exponential backoff. |
+| Streaming instead of one non-streaming reply | Two runs saw a non-streaming call reset after ~4.3–4.6 minutes of silence on every retry, consistent with an intermediate idle timeout. A direct replay of the same call, streamed, ran 411 s with no disconnect and a complete answer. | Every call streams. Only `content` deltas are accumulated; thinking tokens land in a separate field. |
+| Thinking mode on by default | A 9-case comparison: disabling thinking recovered 20–100x speed but dropped full-pipeline recall from 100% to 71%, missing exactly the cases that need inference (a rename invalidating a reference, a flag's scope narrowing). Raising `max_tokens` 4x did not recover them, so it was reasoning, not truncation. | Thinking stays on; only `fixes.draft_fix` (a mechanical rewrite) opts out. |
+| One claim per check call | Two runs died at exactly 10:00 mid-stream, immune to streaming and retries: NVIDIA's free-tier NIM endpoint caps server-side generation at ~10 minutes. Holding the whole multi-claim blob against a large file in one reasoning pass is what hit it. | Each claim is checked in its own call. This is also the granularity the 100%-recall result was measured at. |
+| Ensemble of 3 samples per claim, unioned | The same case was caught in some independent `temperature=0.0` runs and missed in others. Every run tested had zero false positives even when it missed real findings. | Union across samples buys recall with no measured precision cost. |
+| Wait for every sample (no capped wait) | A capped-wait variant (proceed with samples that finish within 300 s) dropped recall to 67% on the three hardest cases; the failure landed at 317.7 s, just past the cap. | Latency there is doing real work; all samples are awaited. A dropped sample is a missing vote, not a fatal error. |

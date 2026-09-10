@@ -1,47 +1,62 @@
 import logging
 import os
+import random
 import threading
+import time
 
+import openai
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
 MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 
-# A real triggered Action run observed one (correct, non-truncated) call
-# taking ~19 minutes. That's a real cost of "thinking" mode, not a bug —
-# so the timeout has to sit comfortably above that rather than fail a
-# legitimate slow-but-right answer.
+# Deterministic decoding is the benchmark's measured setting. The model is
+# still observably nondeterministic at 0.0 (hence the ensemble), but raising
+# it is a config decision, not something to bury in the call site.
+TEMPERATURE = 0.0
+
+# The values below were each set in response to a specific failure seen in
+# a live run. The rule is stated here; the incident behind it is recorded in
+# project-docs/BENCHMARK.md, "Operational findings from live runs".
+
+# Must exceed the longest correct thinking-mode answer observed (~19 min).
 _TIMEOUT_SECONDS = 1500
 
-# Two separate triggered runs both hit a connection reset around the
-# 4-4.5 minute mark of a call — once on a single extract_claims call
-# (recovered on its one retry), once on all 3 parallel ensemble calls at
-# once (didn't recover, crashed the whole run). Same timing both times,
-# with and without concurrency, so this looks like a real recurring
-# reset rather than one-off noise. Raised from 1 so a single reset isn't
-# one unlucky retry away from taking down the whole ensemble again.
+# The OpenAI client's own retries, covering failures of the initial request.
+# One was not enough to survive the connection resets NIM produces.
 _MAX_RETRIES = 3
 
-# With thinking enabled, a real diagnosed failure showed the model correctly
-# reasoning through a case in detail, then running out of budget mid-thought
-# — before ever emitting the actual structured answer. 8000 wasn't enough;
-# NVIDIA's own reference examples budget 16384 for the chain-of-thought
-# alone, on top of the final answer, so we go higher still to leave real
-# headroom. Mechanical (thinking-off) calls need far less room.
+# Thinking calls need room for the chain of thought plus the answer;
+# mechanical (thinking-off) calls need very little.
 _MAX_TOKENS_THINKING = 24000
 _MAX_TOKENS_FAST = 800
 
-# A real triggered run got a clean 200 OK, streamed for 10 minutes, then
-# NVIDIA's server itself returned "Internal server error" mid-stream. The
-# client's own max_retries never saw it: that retry logic only covers a
-# failure on the *initial* request, before a 200 has been returned and
-# streaming has begun. A mid-stream failure needs the whole call redone
-# from scratch, which nothing here was doing — extract_claims in
-# particular has no ensemble to fall back on, so its one call failing
-# killed the entire run instantly. Retrying the whole streamed call is
-# the only option (a partial stream can't be resumed).
+# Whole-call attempts. The client's retries never see a stream that fails
+# after a 200, so the entire streamed call is redone; a partial stream
+# cannot be resumed.
 _MAX_STREAM_RETRIES = 2
+
+# Wait between whole-call attempts: 2s, 4s, 8s ... capped, with jitter so
+# the (claims x ensemble) fan-out doesn't retry in lockstep against a
+# server that just failed. The wait happens *outside* the concurrency
+# slot, so a call that is backing off isn't holding a stream open for
+# nobody.
+_BACKOFF_BASE_SECONDS = 2.0
+_BACKOFF_MAX_SECONDS = 30.0
+_sleep = time.sleep  # indirection so tests can skip the wait
+
+# Errors that no retry can fix: the request itself is wrong (bad key,
+# forbidden model, malformed body). Everything else — connection resets,
+# timeouts, 429s, 5xx, and the generic exceptions a stream raises when the
+# server dies mid-response — is worth another attempt.
+_NON_RETRYABLE = (
+    openai.AuthenticationError,
+    openai.PermissionDeniedError,
+    openai.BadRequestError,
+    openai.NotFoundError,
+    openai.UnprocessableEntityError,
+)
 
 # Per-claim decomposition (see claims.check_claims_against_target) can put
 # (claims x 3 ensemble samples x targets) requests in flight at once — e.g.
@@ -50,8 +65,8 @@ _MAX_STREAM_RETRIES = 2
 # handful of simultaneous streams. This gate bounds how many are open at
 # once (waiters just queue — every call still runs to completion, nothing
 # is abandoned, so it can't cost recall the way the reverted capped-wait
-# ensemble did).
-_MAX_CONCURRENT_REQUESTS = int(os.environ.get("WATCHDOC_MAX_CONCURRENT_NIM_CALLS", "8"))
+# ensemble did). Tuned from the workflow config, not the environment.
+MAX_CONCURRENT_REQUESTS = 8
 
 BASE_URL = "https://integrate.api.nvidia.com/v1"
 
@@ -61,20 +76,29 @@ BASE_URL = "https://integrate.api.nvidia.com/v1"
 # only by editing this file.
 _settings = {
     "model": MODEL,
+    "temperature": TEMPERATURE,
     "timeout_seconds": _TIMEOUT_SECONDS,
-    "max_concurrent_requests": _MAX_CONCURRENT_REQUESTS,
+    "max_concurrent_requests": MAX_CONCURRENT_REQUESTS,
 }
-_request_slots = threading.BoundedSemaphore(_MAX_CONCURRENT_REQUESTS)
+_request_slots = threading.BoundedSemaphore(MAX_CONCURRENT_REQUESTS)
 _client = None
 _client_lock = threading.Lock()
 
 
-def configure(model=None, timeout_seconds=None, max_concurrent_requests=None):
+def max_concurrent_requests():
+    """The configured cap on simultaneously open NIM streams. Callers sizing a
+    thread pool should not exceed it: extra threads only queue on the gate."""
+    return _settings["max_concurrent_requests"]
+
+
+def configure(model=None, temperature=None, timeout_seconds=None, max_concurrent_requests=None):
     """Applies workflow-level settings. Call once, before any chat_completion."""
     global _request_slots, _client
     with _client_lock:
         if model:
             _settings["model"] = model
+        if temperature is not None:
+            _settings["temperature"] = temperature
         if timeout_seconds:
             _settings["timeout_seconds"] = timeout_seconds
         if max_concurrent_requests:
@@ -102,47 +126,50 @@ def get_client():
 def chat_completion(prompt, enable_thinking=True):
     """Single shared entry point for every NIM call in this project.
 
-    enable_thinking defaults to True: a direct 9-case comparison showed that
-    disabling it recovered 20-100x speed but silently dropped full-pipeline
-    recall from 100% to 71%, missing exactly the cases that need real
-    inference (a file rename invalidating a reference, a flag's scope
-    narrowing without disappearing) — not truncation (raising max_tokens
-    4x did not recover the misses). Thinking mode costs real latency but is
-    doing real reasoning work; only opt out per call site for genuinely
-    mechanical tasks (see fixes.draft_fix) where that trade is safe.
+    Two rules, both measured (see project-docs/BENCHMARK.md, "Operational findings from live runs"):
 
-    Streams the response rather than waiting for one non-streaming reply.
-    Two triggered runs both saw a *non-streaming* call get its connection
-    reset by something between here and NVIDIA's server after ~4.3-4.6
-    minutes of silence, every retry included — consistent with an
-    intermediate timeout that kills a connection with no bytes flowing.
-    A direct replay of the exact same failing call, streamed, ran a full
-    411s with zero disconnects and a complete, correct answer: bytes were
-    still arriving the whole time (thinking-mode tokens land in a separate
-    reasoning field, not `content`, so nothing above needs to change to
-    read them — only `content` deltas are accumulated, same as what
-    `.message.content` already returned in the non-streaming version).
+    - Thinking stays on by default. Turning it off is 20-100x faster and
+      cost 29 points of recall on the benchmark; only a genuinely mechanical
+      call site (fixes.draft_fix) should opt out.
+    - Every call streams. Non-streaming calls were reset by an idle timeout
+      between here and NIM; a streamed replay of the same call completed.
+      Only `content` deltas are accumulated; thinking tokens land elsewhere.
     """
     client = get_client()
-    last_error = None
-    for attempt in range(_MAX_STREAM_RETRIES):
+    attempts = max(1, _MAX_STREAM_RETRIES)  # always try at least once; never fall off the loop
+    for attempt in range(1, attempts + 1):
         try:
             with _request_slots:
-                stream = client.chat.completions.create(
-                    model=_settings["model"],
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0,
-                    max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
-                    extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
-                    stream=True,
-                )
-                chunks = []
-                for chunk in stream:
-                    if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
-                        chunks.append(chunk.choices[0].delta.content)
-                return "".join(chunks)
-        except Exception as e:
-            last_error = e
-            logger.warning("chat_completion attempt %d/%d failed mid-stream",
-                            attempt + 1, _MAX_STREAM_RETRIES, exc_info=True)
-    raise last_error
+                return _stream_once(client, prompt, enable_thinking)
+        except Exception as e:  # noqa: BLE001 — classified just below
+            if not _is_retryable(e) or attempt == attempts:
+                raise
+            delay = _backoff_seconds(attempt)
+            logger.warning("chat_completion attempt %d/%d failed (%s); retrying in %.1fs",
+                           attempt, attempts, type(e).__name__, delay, exc_info=True)
+            _sleep(delay)
+
+
+def _stream_once(client, prompt, enable_thinking):
+    stream = client.chat.completions.create(
+        model=_settings["model"],
+        messages=[{"role": "user", "content": prompt}],
+        temperature=_settings["temperature"],
+        max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
+        extra_body={"chat_template_kwargs": {"enable_thinking": enable_thinking}},
+        stream=True,
+    )
+    chunks = []
+    for chunk in stream:
+        if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
+            chunks.append(chunk.choices[0].delta.content)
+    return "".join(chunks)
+
+
+def _is_retryable(error):
+    return not isinstance(error, _NON_RETRYABLE)
+
+
+def _backoff_seconds(attempt):
+    base = min(_BACKOFF_BASE_SECONDS * 2 ** (attempt - 1), _BACKOFF_MAX_SECONDS)
+    return base * random.uniform(0.5, 1.5)

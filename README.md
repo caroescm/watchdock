@@ -15,7 +15,7 @@ A real PR in this repo renamed the config file `.still.yml` to `.still-config.ym
 > **Why:** The CONFIG_FILENAME changed from `.still.yml` to `.still-config.yml`, so Watchdoc now reads the explicit target list from `.still-config.yml` instead. This line still reads syntactically valid text but now describes an outdated config filename, making it semantically stale.
 >
 > **Old:** … (or reads an explicit list from `.still.yml`)
-> **New:** … (or reads an explicit list from `.still-config.yml`)
+> **New:** … (or reads an explicit list from `.watchdoc.yml`)
 
 Every run also maintains a single summary comment on the PR — green "no drift detected" or red with the findings — created once and edited in place on re-runs, so it never piles up.
 
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write   # post suggestions and the summary comment
-      contents: write        # commit fixes on agent-authored PRs
+      contents: write        # only if commit_fixes stays 'true' (direct commits on agent PRs)
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: caroescm/watchdoc@main
@@ -49,6 +49,7 @@ Get a free NVIDIA API key at [build.nvidia.com](https://build.nvidia.com) (no cr
 |---|---|---|---|
 | `nvidia_api_key` | Yes | — | NVIDIA NIM API key, used to call the NIM-hosted Nemotron model. |
 | `github_token` | No | `${{ github.token }}` | GitHub token for reading PRs and posting results. |
+| `commit_fixes` | No | `'true'` | Commit fixes directly onto agent-authored PR branches. Set `'false'` to deliver every fix as a review suggestion and drop `contents: write` from the job. |
 
 ### Outputs
 
@@ -64,7 +65,7 @@ Existing tools each solve one narrow slice of this — deterministic checkers (E
 
 On every PR, Watchdoc:
 
-1. **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.still-config.yml`)
+1. **Discovers targets** — auto-detects `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`, `conventions.md`, `README.md`, `/docs/**` (or reads an explicit list from `.watchdoc.yml`)
 2. **Extracts claims** from the diff — a reasoning-model pass that lists, one by one, what this change could make wrong in documentation
 3. **Checks each claim against each target file independently** — every claim gets its own focused model calls (a 3-sample parallel ensemble per claim, findings unioned), distinguishing *semantic staleness* (still valid-looking text, now wrong) from a *broken reference* (something that flat-out no longer exists)
 4. **Drafts a fix** for each real finding
@@ -109,7 +110,7 @@ python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-na
 pip install -e ".[dev]" -e watchdoc_detector
 ```
 
-The single `pip install` resolves both local packages together: `watchdoc` (core logic plus the `dev` extra for pytest) and `watchdoc_detector` (the NAT entry point, which depends on `watchdoc`).
+The single `pip install` resolves both local packages together: `watchdoc` (core logic plus the `dev` extra for pytest) and `watchdoc_detector` (the NAT entry point, which depends on `watchdoc`). The action itself installs with `-c constraints.txt`, which pins every transitive dependency; refresh it with `pip freeze --exclude-editable > constraints.txt` after a deliberate upgrade.
 
 Run the test suite (no API key needed — these test pure logic, not live model calls):
 

@@ -6,7 +6,10 @@ jobs:
   drift-check:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: write
+      pull-requests: write   # summary comment and review suggestions
+      # Only needed because this repo demonstrates the agent-PR path (direct
+      # commits). Human PRs never use it; if you set commit_fixes: 'false'
+      # below, drop it.
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

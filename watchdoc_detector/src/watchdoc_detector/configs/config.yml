@@ -3,6 +3,8 @@ workflow:
   # Every field is optional; these are the defaults.
   # repo_root: null            # checkout to scan; defaults to $GITHUB_WORKSPACE, then the cwd
   # model: nvidia/nemotron-3.5-lightning-30b-a3b
+  # temperature: 0.0           # the benchmark's measured setting
   # ensemble_size: 3           # independent samples per claim/target check
   # max_concurrent_nim_calls: 8
   # nim_timeout_seconds: 1500
+  # commit_fixes: true         # false = suggestions only, no `contents: write` needed

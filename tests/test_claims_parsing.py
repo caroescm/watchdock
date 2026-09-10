@@ -13,6 +13,7 @@ from watchdoc.claims import (
     _merge_findings,
     check_claim_against_target_ensemble,
     check_claims_against_target,
+    check_claims_against_targets,
 )
 
 
@@ -150,7 +151,7 @@ def test_merge_findings_empty_input():
 
 def test_ensemble_degrades_gracefully_when_one_sample_fails():
     """Regression test for a real triggered run: all 3 ensemble samples hit
-    a connection error, the client's single retry didn't recover, and the
+    a connection error, the client's built-in retries didn't recover, and the
     whole check crashed with nothing posted. A dropped sample should be
     treated as a missing vote, not a fatal error, as long as at least one
     sample succeeds."""
@@ -336,3 +337,54 @@ def test_parse_findings_value_containing_a_colon_is_not_a_key():
     findings = parse_findings("LINE: Note: run `make test` first\nREASON: r\n")
 
     assert findings[0].line == "Note: run `make test` first"
+
+
+def test_check_claims_against_targets_uses_one_pool_bounded_by_the_nim_cap():
+    """targets x claims x samples used to mean three nested pools, each sized
+    to its item count. Now it is one pool, no bigger than the NIM
+    concurrency cap, no bigger than the number of samples."""
+    pools = []
+
+    class _RecordingPool:
+        def __init__(self, max_workers):
+            pools.append(max_workers)
+            self._real = __import__("concurrent.futures").futures.ThreadPoolExecutor(max_workers)
+
+        def __enter__(self):
+            return self._real.__enter__()
+
+        def __exit__(self, *a):
+            return self._real.__exit__(*a)
+
+    contents = {"README.md": "a", "AGENTS.md": "b"}
+    with patch("watchdoc.claims.ThreadPoolExecutor", _RecordingPool), \
+         patch("watchdoc.claims.check_claim_against_target", return_value=[]), \
+         patch("watchdoc.claims.nim_client.max_concurrent_requests", return_value=8):
+        check_claims_against_targets(["c1", "c2", "c3"], contents, n=3)          # 18 samples
+        check_claims_against_targets(["c1"], {"README.md": "a"}, n=2)           # 2 samples
+        check_claims_against_targets(["c1"], contents, n=3, max_workers=4)      # explicit cap
+
+    assert pools == [8, 2, 4]
+
+
+def test_check_claims_against_targets_groups_results_per_target_and_reports_dead_targets():
+    """A sample failure is a missing vote for its (target, claim); a target
+    whose every claim lost every sample is an error, the others still get
+    their findings."""
+    def fake_check(claim, target_path, target_content):
+        if target_path == "AGENTS.md":
+            raise ConnectionError("boom")
+        return [Finding(line=f"{target_path}:{claim}", type="t", reason="r")]
+
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
+        findings, errors = check_claims_against_targets(["c1", "c2"], {"README.md": "a", "AGENTS.md": "b"}, n=2)
+
+    assert sorted(f.line for f in findings["README.md"]) == ["README.md:c1", "README.md:c2"]
+    assert "AGENTS.md" not in findings
+    assert "AGENTS.md" in errors and "2 claim(s) failed" in errors["AGENTS.md"]
+
+
+def test_check_claims_against_targets_with_no_claims_returns_empty_findings_for_every_target():
+    findings, errors = check_claims_against_targets([], {"README.md": "a"}, n=3)
+
+    assert findings == {"README.md": []} and errors == {}

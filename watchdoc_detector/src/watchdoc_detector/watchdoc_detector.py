@@ -10,14 +10,14 @@ sent as ``chat_template_kwargs``, and whole-call retries around a streamed
 response. Everything an operator would want to tune is therefore a field on
 the function config below, applied to ``nim_client`` at registration time.
 
-The pipeline is synchronous, thread-pooled code. It runs in a worker thread
-via ``asyncio.to_thread`` so NAT's event loop is never blocked.
+The pipeline is synchronous code fanning out over one bounded thread pool
+(sized to the NIM concurrency cap). It runs in a worker thread via
+``asyncio.to_thread`` so NAT's event loop is never blocked.
 """
 import asyncio
 import logging
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor
 
 from nat.plugin_api import Builder
 from nat.plugin_api import FunctionBaseConfig
@@ -26,9 +26,9 @@ from nat.plugin_api import register_function
 from pydantic import Field
 
 from watchdoc import nim_client
-from watchdoc.claims import check_claims_against_target, extract_claims
+from watchdoc.claims import check_claims_against_targets, extract_claims
 from watchdoc.fixes import commit_fixes_to_branch, draft_fix, post_pr_suggestion
-from watchdoc.github_api import detect_pr_origin, get_diff, get_pr_context
+from watchdoc.github_api import detect_pr_origin, get_diff, get_file_at, get_pr_context
 from watchdoc.models import Origin
 from watchdoc.report import build_run_summary, post_run_summary_safely
 from watchdoc.targets import discover_targets
@@ -50,17 +50,26 @@ class WatchdocDetectorFunctionConfig(FunctionBaseConfig, name="watchdoc_detector
         default=nim_client.MODEL,
         description="NIM model id used for every call.",
     )
+    temperature: float = Field(
+        default=nim_client.TEMPERATURE, ge=0.0, le=2.0,
+        description="Sampling temperature. 0.0 is the setting the benchmark was measured at.",
+    )
     ensemble_size: int = Field(
         default=3, ge=1,
         description="Independent samples per claim/target check; findings are unioned.",
     )
     max_concurrent_nim_calls: int = Field(
-        default=nim_client._MAX_CONCURRENT_REQUESTS, ge=1,
+        default=nim_client.MAX_CONCURRENT_REQUESTS, ge=1,
         description="Upper bound on simultaneously open NIM streams.",
     )
     nim_timeout_seconds: int = Field(
         default=nim_client._TIMEOUT_SECONDS, ge=1,
         description="Per-request timeout. Thinking-mode calls have been observed to take ~19 minutes.",
+    )
+    commit_fixes: bool = Field(
+        default=True,
+        description="Commit fixes directly onto agent-authored PR branches. Needs `contents: write`; "
+                    "set false to deliver every fix as a review suggestion and drop that permission.",
     )
 
 
@@ -83,26 +92,40 @@ def parse_pr_number(task):
     return int(match.group(1)) if match else None
 
 
-def _process_target(target_path, claims, repo, pr, origin, repo_root, ensemble_size):
-    """Runs the full check -> fix -> deliver flow for one target file and
-    returns the delivered findings (each Finding gains `fix` and
-    `delivery`). Targets are independent of each other (different files), so
-    this is safe to run concurrently across targets rather than one at a time."""
-    with open(os.path.join(repo_root, target_path), encoding="utf-8") as f:
-        target_content = f.read()
+def read_targets(repo_root, targets):
+    """Reads every target once, up front. Returns (contents, errors), each
+    keyed by target path; a file that can't be read as text is an error for
+    that target, not a crash for the run."""
+    contents, errors = {}, {}
+    for target_path in targets:
+        try:
+            with open(os.path.join(repo_root, target_path), encoding="utf-8") as f:
+                contents[target_path] = f.read()
+        except Exception as e:  # noqa: BLE001 — reported per target
+            logger.exception("Reading %s failed", target_path)
+            errors[target_path] = f"{type(e).__name__}: {e}"
+    return contents, errors
 
-    # Each claim is checked independently (ensemble per claim, all claims in
-    # parallel), findings unioned — one call per narrow claim keeps every
-    # generation safely under NIM's ~10-minute server-side cap, and a single
-    # sample has shown real run-to-run variance (the same true finding
-    # sometimes missed), so we don't trust just one.
-    findings = check_claims_against_target(claims, target_path, target_content, n=ensemble_size)
-    logger.info("Merged findings for %s: %s", target_path, findings)
 
+def deliver_target(target_path, target_content, findings, repo, pr, origin, commit_fixes=True):
+    """Drafts a fix for every finding in one target and delivers them — one
+    commit for agent PRs, one suggestion per finding for human PRs. Each
+    Finding gains `fix` and `delivery`.
+
+    Detection ran on `target_content` from the checkout, which on a
+    pull_request event is the merge commit. Delivery anchors to the PR head
+    (suggestions cite pr.head.sha; commits replace the head file), so the
+    head version is fetched here and used for both. If it can't be fetched
+    the checkout content is used, which is right whenever the base branch
+    didn't touch the file."""
     for finding in findings:
         finding.fix = draft_fix(target_path, finding.line, finding.reason)
 
-    if origin == Origin.AGENT:
+    head_content = get_file_at(repo, target_path, pr.head.sha)
+    if head_content is not None:
+        target_content = head_content
+
+    if origin == Origin.AGENT and commit_fixes:
         # All fixes for this file go into one commit, applied to one running
         # copy of the content; committing per finding from the original
         # content would make each commit revert the previous one.
@@ -115,7 +138,6 @@ def _process_target(target_path, claims, repo, pr, origin, repo_root, ensemble_s
                 pr, target_path, target_content, finding.line, finding.fix,
                 finding_type=finding.type, reason=finding.reason,
             )
-
     return findings
 
 
@@ -129,10 +151,14 @@ def _format_target_report(target_path, findings):
     return "\n".join(lines)
 
 
-def run_pipeline(repo_root, ensemble_size=3, pr_number=None):
-    """The whole Watchdoc run, synchronous. Failure policy, consistent with the
-    layers below it (a dropped ensemble sample or claim is a missing vote):
-    one target's crash is recorded and reported, the other targets still
+def run_pipeline(repo_root, ensemble_size=3, pr_number=None, max_workers=None, commit_fixes=True):
+    """The whole Watchdoc run, synchronous, in three phases: read every
+    target, check all (target x claim x sample) combinations through one
+    bounded pool, then draft and deliver fixes per target.
+
+    Failure policy, consistent with the layers below it (a dropped ensemble
+    sample or claim is a missing vote): a target that can't be read,
+    checked, or delivered is recorded and reported, the other targets still
     complete, the summary is still posted, and only then does the run fail
     so the Action goes red without hiding what was checked."""
     repo, pr = get_pr_context(pr_number)
@@ -155,19 +181,21 @@ def run_pipeline(repo_root, ensemble_size=3, pr_number=None):
         post_run_summary_safely(pr, build_run_summary(origin, targets, [], {}))
         return "No claims in docs/instruction files are affected by this diff."
 
-    def guarded(target_path):
+    contents, failed_targets = read_targets(repo_root, targets)
+    findings_by_target, check_errors = check_claims_against_targets(
+        claims, contents, n=ensemble_size, max_workers=max_workers)
+    failed_targets.update(check_errors)
+
+    for target_path, findings in findings_by_target.items():
+        if not findings:
+            continue
         try:
-            return target_path, _process_target(
-                target_path, claims, repo, pr, origin, repo_root, ensemble_size), None
+            deliver_target(target_path, contents[target_path], findings, repo, pr, origin, commit_fixes)
         except Exception as e:  # noqa: BLE001 — every failure must be reported, whatever it is
-            logger.exception("Checking %s failed", target_path)
-            return target_path, [], f"{type(e).__name__}: {e}"
-
-    with ThreadPoolExecutor(max_workers=len(targets)) as executor:
-        results = list(executor.map(guarded, targets))
-
-    findings_by_target = {t: findings for t, findings, error in results if error is None}
-    failed_targets = {t: error for t, _, error in results if error is not None}
+            logger.exception("Delivering fixes for %s failed", target_path)
+            failed_targets[target_path] = f"{type(e).__name__}: {e}"
+    for target_path in failed_targets:
+        findings_by_target.pop(target_path, None)
 
     # One persistent summary comment per PR — posted on clean runs too
     # (a green "checked, nothing drifted" is information; silence is
@@ -196,6 +224,7 @@ async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, bui
     """
     nim_client.configure(
         model=config.model,
+        temperature=config.temperature,
         timeout_seconds=config.nim_timeout_seconds,
         max_concurrent_requests=config.max_concurrent_nim_calls,
     )
@@ -210,6 +239,7 @@ async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, bui
         comes from the GitHub event payload, or from a "#<number>" in the input.
         """
         return await asyncio.to_thread(
-            run_pipeline, repo_root, config.ensemble_size, parse_pr_number(task))
+            run_pipeline, repo_root, config.ensemble_size, parse_pr_number(task),
+            config.max_concurrent_nim_calls, config.commit_fixes)
 
     yield FunctionInfo.from_fn(run_watchdoc_check, description=run_watchdoc_check.__doc__)

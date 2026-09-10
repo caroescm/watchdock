@@ -1,6 +1,6 @@
 import pytest
 
-from watchdoc.github_api import detect_pr_origin_from_data, get_pr_context
+from watchdoc.github_api import NO_PATCH_PLACEHOLDER, detect_pr_origin_from_data, get_diff, get_pr_context
 from watchdoc.models import Origin
 
 
@@ -18,8 +18,48 @@ def test_agent_pr_cursor_trailer():
     assert detect_pr_origin_from_data(messages, "caroescm") == Origin.AGENT
 
 
-def test_agent_pr_bot_login():
-    assert detect_pr_origin_from_data(["Bump dependency"], "dependabot[bot]") == Origin.AGENT
+def test_known_agent_bot_login_is_agent():
+    assert detect_pr_origin_from_data(["Add feature"], "devin-ai-integration[bot]") == Origin.AGENT
+
+
+def test_dependency_and_ci_bots_are_not_agents():
+    """Dependabot and Renovate force-push over their branches, so a fix
+    committed there is lost. Their PRs get suggestions like a human's."""
+    for login in ["dependabot[bot]", "renovate[bot]", "github-actions[bot]", "some-unknown[bot]"]:
+        assert detect_pr_origin_from_data(["Bump dependency"], login) == Origin.HUMAN
+
+
+def test_trailer_must_start_a_line_and_name_a_known_agent():
+    assert detect_pr_origin_from_data(["Release notes: shipped-by: the release team"], "x") == Origin.HUMAN
+    assert detect_pr_origin_from_data(["Fix\n\nShipped-by: Codex"], "x") == Origin.AGENT
+    assert detect_pr_origin_from_data(["Fix\n\nCo-Authored-By: Alice <a@example.com>"], "x") == Origin.HUMAN
+
+
+class _FakeFile:
+    def __init__(self, filename, patch):
+        self.filename = filename
+        self.patch = patch
+
+
+class _FakeFilesPR:
+    def __init__(self, files):
+        self._files = files
+
+    def get_files(self):
+        return self._files
+
+
+def test_get_diff_replaces_missing_patch_with_placeholder():
+    """PyGithub returns patch=None for binary, oversized and renamed files;
+    the string 'None' must never reach the prompt."""
+    pr = _FakeFilesPR([_FakeFile("a.py", "-old\n+new"), _FakeFile("logo.png", None)])
+
+    diff = get_diff(pr)
+
+    assert diff == [
+        {"filename": "a.py", "patch": "-old\n+new"},
+        {"filename": "logo.png", "patch": NO_PATCH_PLACEHOLDER},
+    ]
 
 
 def test_ambiguous_defaults_to_human():

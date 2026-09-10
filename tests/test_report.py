@@ -1,3 +1,4 @@
+from conftest import FakeComment as _FakeComment, FakePR as _FakePR
 from watchdoc.models import Delivery, Finding, Origin
 from watchdoc.report import SUMMARY_MARKER, build_run_summary, upsert_run_summary, post_run_summary_safely
 
@@ -67,25 +68,6 @@ def test_build_run_summary_labels_commit_failed_delivery():
     assert "couldn't commit to this branch" in summary
 
 
-class _FakeComment:
-    def __init__(self, body):
-        self.body = body
-
-    def edit(self, body):
-        self.body = body
-
-
-class _FakePR:
-    def __init__(self, existing_comments=None):
-        self.comments = list(existing_comments or [])
-
-    def get_issue_comments(self):
-        return list(self.comments)
-
-    def create_issue_comment(self, body):
-        self.comments.append(_FakeComment(body))
-
-
 def test_upsert_creates_summary_comment_on_first_run():
     pr = _FakePR()
 
@@ -98,7 +80,7 @@ def test_upsert_creates_summary_comment_on_first_run():
 
 def test_upsert_edits_existing_summary_instead_of_stacking_new_ones():
     existing = _FakeComment(f"{SUMMARY_MARKER}\nold summary")
-    pr = _FakePR([_FakeComment("unrelated comment"), existing])
+    pr = _FakePR(existing_comments=[_FakeComment("unrelated comment"), existing])
 
     result = upsert_run_summary(pr, "new summary")
 

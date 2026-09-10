@@ -28,11 +28,11 @@ def test_discover_targets_docs_directory(tmp_path):
     assert "docs/api.md" in result
 
 
-def test_still_yml_overrides_auto_detect(tmp_path):
+def test_watchdoc_yml_overrides_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
     (tmp_path / "CONTRIBUTING.md").write_text("# contributing")
-    (tmp_path / ".still-config.yml").write_text(
+    (tmp_path / ".watchdoc.yml").write_text(
         "targets:\n  - CONTRIBUTING.md\n"
     )
 
@@ -42,10 +42,10 @@ def test_still_yml_overrides_auto_detect(tmp_path):
     assert result == ["CONTRIBUTING.md"]
 
 
-def test_still_yml_ignore_subtracts_from_auto_detect(tmp_path):
+def test_watchdoc_yml_ignore_subtracts_from_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
-    (tmp_path / ".still-config.yml").write_text(
+    (tmp_path / ".watchdoc.yml").write_text(
         "ignore:\n  - README.md\n"
     )
 
@@ -55,8 +55,8 @@ def test_still_yml_ignore_subtracts_from_auto_detect(tmp_path):
     assert "README.md" not in result
 
 
-def test_still_yml_targets_pointing_at_nonexistent_file_is_dropped(tmp_path):
-    (tmp_path / ".still-config.yml").write_text(
+def test_watchdoc_yml_targets_pointing_at_nonexistent_file_is_dropped(tmp_path):
+    (tmp_path / ".watchdoc.yml").write_text(
         "targets:\n  - DOES_NOT_EXIST.md\n"
     )
 
@@ -78,6 +78,42 @@ def test_binary_file_under_docs_is_not_a_target(tmp_path):
 
 def test_explicit_target_that_is_binary_is_dropped(tmp_path):
     (tmp_path / "logo.bin").write_bytes(b"\x00\x01\x02\xff\xfe")
-    (tmp_path / ".still-config.yml").write_text("targets:\n  - logo.bin\n")
+    (tmp_path / ".watchdoc.yml").write_text("targets:\n  - logo.bin\n")
 
     assert discover_targets(str(tmp_path)) == []
+
+
+def test_docs_directory_only_yields_documentation_extensions(tmp_path):
+    docs_dir = tmp_path / "docs"
+    docs_dir.mkdir()
+    for name in ["guide.md", "api.rst", "notes.txt", "conf.py", "Makefile", "requirements.txt"]:
+        (docs_dir / name).write_text("text")
+
+    result = discover_targets(str(tmp_path))
+
+    assert result == ["docs/api.rst", "docs/guide.md", "docs/notes.txt", "docs/requirements.txt"]
+
+
+def test_cursor_rules_directory_yields_its_rule_files(tmp_path):
+    """Current Cursor keeps rules as .cursor/rules/*.mdc, a directory, which
+    an isfile() check silently skipped."""
+    rules = tmp_path / ".cursor" / "rules"
+    rules.mkdir(parents=True)
+    (rules / "python.mdc").write_text("rules")
+    (rules / "style.mdc").write_text("rules")
+
+    result = discover_targets(str(tmp_path))
+
+    assert result == [".cursor/rules/python.mdc", ".cursor/rules/style.mdc"]
+
+
+def test_legacy_config_name_still_read_with_a_warning(tmp_path, caplog):
+    (tmp_path / "AGENTS.md").write_text("# agents")
+    (tmp_path / "CONTRIBUTING.md").write_text("# contributing")
+    (tmp_path / ".still-config.yml").write_text("targets:\n  - CONTRIBUTING.md\n")
+
+    with caplog.at_level("WARNING"):
+        result = discover_targets(str(tmp_path))
+
+    assert result == ["CONTRIBUTING.md"]
+    assert ".watchdoc.yml" in caplog.text

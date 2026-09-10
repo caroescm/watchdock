@@ -8,6 +8,12 @@ inputs:
     description: 'GitHub token for reading PRs and posting results'
     required: false
     default: ${{ github.token }}
+  commit_fixes:
+    description: >-
+      Commit fixes directly onto agent-authored PR branches (needs `contents: write`).
+      Set to 'false' to deliver every fix as a review suggestion instead, and drop that permission.
+    required: false
+    default: 'true'
 branding:
   icon: 'eye'
   color: 'orange'
@@ -17,12 +23,17 @@ runs:
     - name: Set up Python
       uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
+        # The version this action's own CI exercises. The packages accept 3.11-3.13
+        # (pyproject.toml); only 3.12 has been run end to end.
         python-version: '3.12'
     - name: Install dependencies
       shell: bash
       run: |
         set -euo pipefail
-        pip install ${{ github.action_path }} ${{ github.action_path }}/watchdoc_detector
+        # constraints.txt pins every transitive dependency to the versions the
+        # test suite and benchmark ran against; refresh it deliberately, not per PR.
+        pip install -c ${{ github.action_path }}/constraints.txt \
+          ${{ github.action_path }} ${{ github.action_path }}/watchdoc_detector
     - name: Run Watchdoc
       shell: bash
       env:
@@ -32,4 +43,5 @@ runs:
         set -euo pipefail
         nat run \
           --config_file ${{ github.action_path }}/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
+          --override workflow.commit_fixes ${{ inputs.commit_fixes }} \
           --input "check this PR"

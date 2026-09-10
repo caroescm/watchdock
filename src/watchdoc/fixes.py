@@ -2,32 +2,21 @@ import logging
 
 from watchdoc.models import Delivery
 from watchdoc.nim_client import chat_completion
+from watchdoc.prompts import draft_fix_prompt
 
 logger = logging.getLogger(__name__)
 
 
 def draft_fix(target_path, stale_line, reason):
     """Given a stale line and why it's wrong, ask the model to rewrite it correctly."""
-    prompt = f"""You are fixing one line in `{target_path}` that is now inaccurate.
-
-Stale line:
-{stale_line}
-
-Why it's wrong:
-{reason}
-
-Rewrite this line (or short paragraph, if the stale line is part of one) so it accurately
-reflects the current code. Keep the same style, tone, and formatting conventions as the
-original. Respond with ONLY the corrected text — no explanation, no quotes, no markdown
-fences around it.
-"""
+    prompt = draft_fix_prompt(target_path, stale_line, reason)
     # Mechanical rewrite, not a judgment call — the hard decision (is this
     # line actually wrong, and why) was already made by check_claim_against_
     # target. Safe to run fast/thinking-off here.
     return chat_completion(prompt, enable_thinking=False).strip()
 
 
-def _find_line_number(file_content, stale_line):
+def find_line_number(file_content, stale_line):
     """Best-effort: find the 1-indexed line number of stale_line inside file_content."""
     stale_stripped = stale_line.strip()
     for i, line in enumerate(file_content.splitlines(), start=1):
@@ -42,13 +31,18 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
     with an explanation of what kind of drift was found and why the line is
     wrong — not just the bare replacement text.
 
+    `target_content` must be the file as it is at the PR head: the comment
+    is anchored to pr.head.sha, and a line number taken from the Action's
+    checkout (the merge commit) can point at the wrong line when the base
+    branch also changed the file. The caller fetches the head version.
+
     Falls back to a plain PR comment carrying the same explanation if the
     exact line can't be pinpointed (e.g. the model paraphrased instead of
     quoting verbatim), or if GitHub rejects the review comment — review
     comments can only anchor to lines that are part of the PR's diff, and a
     stale doc line usually isn't (the PR changed code, not the doc)."""
     explanation = f"🔎 **Watchdoc — {finding_type}** in `{target_path}`: {reason}"
-    line_number = _find_line_number(target_content, stale_line)
+    line_number = find_line_number(target_content, stale_line)
 
     fallback_body = (
         f"{explanation}\n\n**Stale line:**\n> {stale_line}\n\n"
@@ -69,7 +63,9 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
             line=line_number,
         )
         return Delivery.SUGGESTION_POSTED
-    except Exception:
+    except Exception:  # noqa: BLE001 — degrade to a plain comment, but say why
+        logger.warning("Review comment on %s:%s rejected; posting a plain PR comment instead",
+                       target_path, line_number, exc_info=True)
         pr.create_issue_comment(fallback_body)
         return Delivery.FALLBACK_COMMENT
 
@@ -90,7 +86,8 @@ def commit_fixes_to_branch(repo, pr, target_path, target_content, fixes):
     fix as part of the PR before merge, just without an extra manual step.
 
     `fixes` is a list of Finding objects whose `fix` is already drafted.
-    Returns one Delivery per fix, in order:
+    `target_content` must be the file as it is at the PR head, since that is
+    the version the commit replaces. Returns one Delivery per fix, in order:
 
     - COMMITTED: the replacement is in the commit.
     - NOT_APPLIED_NO_MATCH: the stale line wasn't found verbatim in the

@@ -2,8 +2,10 @@ import fnmatch
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
+from watchdoc import nim_client
 from watchdoc.models import Finding
 from watchdoc.nim_client import chat_completion
+from watchdoc.prompts import check_claim_prompt, extract_claims_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -51,20 +53,7 @@ def _request_claims(diff):
 
     diff_text = format_diff(relevant_diff)
 
-    prompt = f"""You are reviewing a code change to figure out what it might make false in project documentation or AI-agent instruction files (like README.md, AGENTS.md, CLAUDE.md).
-                Given the diff below, list any specific claims this change could affect: library/dependency choices, CLI commands, config keys, function signatures, file/module locations, described behavior, or stated conventions.
-                For each one, briefly describe what changed and what kind of documented claim it might now contradict.
-
-Respond with one block per claim, with a blank line between blocks, in exactly this format:
-CLAIM: <what changed and what documented claim it could now contradict>
-
-Each CLAIM must be fully self-contained — it will later be checked against documentation on its own, without the other claims or this diff for context — so name the specific files, symbols, commands, or values involved rather than referring to "the change above" or "see previous".
-
-If nothing in the diff seems relevant to documentation or agent instructions, respond with exactly: NONE
-
-Diff:
-{diff_text}
-"""
+    prompt = extract_claims_prompt(diff_text)
     return chat_completion(prompt)
 
 
@@ -142,38 +131,10 @@ def check_claim_against_target(claim, target_path, target_content):
 
 
 def _request_check(claim, target_path, target_content):
-    """The raw model call behind check_claim_against_target.
-
-    Takes a single claim, not the whole extracted set: NVIDIA's free-tier NIM
-    endpoint enforces a hard ~10-minute server-side generation cap (two real
-    triggered runs both died at 10:00 sharp, mid-stream, immune to streaming
-    and retries), and holding an entire multi-category claims blob against a
-    large target file in one continuous reasoning pass is exactly what pushed
-    calls past it. One narrow claim per call is also the granularity the
-    benchmark's 100%-recall result was actually measured at — every benchmark
-    case was a single, narrowly-scoped change."""
-    prompt = f"""You are checking whether a documentation or agent-instruction file is still accurate, given a claim about what a code change affected.
-
-Claim about what changed:
-{claim}
-
-Here is the current content of `{target_path}`:
-{target_content}
-
-For each line in `{target_path}` that this claim makes now inaccurate or contradicted, quote the exact line and explain why it's now wrong. Roughly classify it as one of:
-- semantic staleness: the line is still syntactically fine but now describes something false
-- broken reference: the line points to something (a file, command, or symbol) that no longer exists at all
-
-If a line could reasonably be either, just pick whichever fits best and move on — do not spend time deliberating between the two, the exact label is a minor detail, not the point. The important thing is catching every line that's actually wrong.
-
-Do NOT include lines that are unaffected — only report lines that are actually now wrong.
-If nothing in `{target_path}` is affected by this claim, respond with exactly: NONE
-
-Respond in this format for each finding, with a blank line between findings:
-LINE: <exact quoted line, verbatim from the file above>
-TYPE: semantic staleness | broken reference
-REASON: <why it's now wrong>
-"""
+    """The raw model call behind check_claim_against_target: one claim, one
+    target, one call. See check_claims_against_targets for why not the
+    whole claim set at once."""
+    prompt = check_claim_prompt(claim, target_path, target_content)
     return chat_completion(prompt)
 
 
@@ -238,86 +199,92 @@ def _merge_findings(list_of_finding_lists):
     return merged
 
 
-def check_claim_against_target_ensemble(claim, target_path, target_content, n=3):
-    """Runs check_claim_against_target n times in parallel and unions the
-    results, instead of trusting a single sample.
+def check_claims_against_targets(claims_list, contents_by_target, n=3, max_workers=None):
+    """Checks every claim against every target, n independent samples each,
+    through ONE bounded thread pool, and unions the findings per target.
 
-    Empirically, the same case sometimes gets caught and sometimes gets
-    missed across independent temperature=0.0 calls to this model/serving
-    stack — real nondeterminism, not something a single prompt tweak fixes.
-    Every run we tested had zero false positives even when it missed real
-    findings, so "union across samples" trades more API calls for higher
-    recall without a corresponding precision cost we've observed.
+    Returns (findings_by_target, errors_by_target). A target appears in
+    exactly one of the two: with its merged findings, or with the reason it
+    could not be checked at all.
 
-    A capped-wait version (proceed with whichever samples finish within a
-    time budget, abandon stragglers) was tried and reverted: on the same
-    3 hardest cases, it dropped recall to 67%, failing exactly the case
-    that has consistently needed the most deliberation time throughout
-    testing (its failure landed at 317.7s, just past the 300s cap tried).
-    Waiting for all n samples costs more time but that latency is doing
-    real work, not padding — same lesson as the thinking-mode finding.
+    Why one flat pool: the natural unit of work is a single sample — one
+    NIM call for one (target, claim) pair — and there are
+    targets x claims x n of them. Nesting a pool per layer, each sized to
+    its item count, parked hundreds of idle threads on nim_client's
+    concurrency gate for a big docs/ tree. The pool here is capped at that
+    gate's size (see nim_client.max_concurrent_requests); more threads
+    could only wait.
 
-    A real triggered run hit a connection error on all 3 samples at once
-    (the shared client's single retry also failed) and crashed the entire
-    check with no result posted at all, for what should have been an
-    isolated network blip. A dropped sample is now treated as a missing
-    vote, not a fatal error — only raise if every sample fails, since at
-    that point there's genuinely no result to report rather than one to
-    degrade gracefully from.
+    Why n samples per claim, all awaited: the model is nondeterministic at
+    temperature 0.0 and has shown no false positives, so a union of samples
+    buys recall for free; abandoning slow samples cost recall. Why one
+    claim per call: NIM's free tier caps a generation at ~10 minutes, and
+    the whole-claims-blob shape is what hit it. Both measured; see
+    project-docs/BENCHMARK.md, "Operational findings from live runs".
+
+    Failure policy, the same at every level: a failed sample is a missing
+    vote for its claim; a claim with no surviving sample is dropped for
+    that target; a target with no surviving claim is reported as an error.
+    Nothing here raises for a partial failure — the caller decides.
     """
-    with ThreadPoolExecutor(max_workers=n) as executor:
-        futures = [
-            executor.submit(check_claim_against_target, claim, target_path, target_content)
-            for _ in range(n)
-        ]
-        samples = []
-        for future in futures:
-            try:
-                samples.append(future.result())
-            except Exception:
-                logger.warning("Ensemble sample for %s failed and was dropped", target_path, exc_info=True)
+    tasks = [
+        (target_path, claim)
+        for target_path in contents_by_target
+        for claim in claims_list
+        for _ in range(n)
+    ]
+    findings_by_target = {t: [] for t in contents_by_target}
+    errors_by_target = {}
+    if not tasks:
+        return findings_by_target, errors_by_target
 
-    if not samples:
-        raise RuntimeError(f"All {n} ensemble samples failed for {target_path}; no result to report")
-
-    return _merge_findings(samples)
-
-
-def check_claims_against_target(claims_list, target_path, target_content, n=3):
-    """Checks each individual claim against the target as its own independent
-    ensemble, all claims in parallel, and unions every finding.
-
-    This per-claim decomposition exists because of a measured hard wall:
-    NVIDIA's free-tier NIM endpoint kills generation at ~10 minutes
-    server-side (two separate real triggered runs failed mid-stream at
-    exactly 10:00 — after streaming and whole-call retries were already in
-    place, so neither can help). A single call carrying the entire claims
-    blob against a large target file is the one task shape that ran long
-    enough to hit it. One claim per call keeps each generation short, and
-    since claims run concurrently, wall-clock is the slowest single claim
-    rather than one monolithic pass. nim_client caps global concurrency so
-    (claims x ensemble x targets) fan-out can't stampede the API.
-
-    Failure policy mirrors the sample level one layer up: a claim whose
-    entire ensemble failed is logged and dropped (a missing vote, not a
-    fatal error); raise only if every claim failed, since then there's
-    genuinely no result to report."""
-    with ThreadPoolExecutor(max_workers=max(len(claims_list), 1)) as executor:
+    workers = min(len(tasks), max_workers or nim_client.max_concurrent_requests())
+    samples = {}  # (target, claim) -> list of successful sample results
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
-            executor.submit(check_claim_against_target_ensemble, claim, target_path, target_content, n): claim
-            for claim in claims_list
+            executor.submit(check_claim_against_target, claim, target_path, contents_by_target[target_path]): (target_path, claim)
+            for target_path, claim in tasks
         }
-        per_claim_findings = []
-        failed = 0
-        for future, claim in futures.items():
+        for future, key in futures.items():
             try:
-                per_claim_findings.append(future.result())
+                result = future.result()
             except Exception:
-                failed += 1
+                logger.warning("Ensemble sample for %s failed and was dropped", key[0], exc_info=True)
+                continue
+            samples.setdefault(key, []).append(result)
+
+    for target_path in contents_by_target:
+        per_claim = []
+        dropped = 0
+        for claim in claims_list:
+            key = (target_path, claim)
+            if key in samples:
+                per_claim.append(_merge_findings(samples[key]))
+            else:
+                dropped += 1
                 logger.warning("Every ensemble sample failed for claim %r against %s; dropping that claim",
-                               claim[:120], target_path, exc_info=True)
+                               claim[:120], target_path)
+        if claims_list and dropped == len(claims_list):
+            errors_by_target[target_path] = (
+                f"All {len(claims_list)} claim(s) failed against {target_path}; no result to report")
+            del findings_by_target[target_path]
+        else:
+            findings_by_target[target_path] = _merge_findings(per_claim)
 
-    if claims_list and failed == len(claims_list):
-        raise RuntimeError(f"All {len(claims_list)} claims failed against {target_path}; no result to report")
+    return findings_by_target, errors_by_target
 
-    return _merge_findings(per_claim_findings)
+
+def check_claims_against_target(claims_list, target_path, target_content, n=3, max_workers=None):
+    """Single-target form of check_claims_against_targets. Raises RuntimeError
+    if every claim failed, since then there's genuinely no result to report."""
+    findings_by_target, errors = check_claims_against_targets(
+        claims_list, {target_path: target_content}, n=n, max_workers=max_workers)
+    if target_path in errors:
+        raise RuntimeError(errors[target_path])
+    return findings_by_target[target_path]
+
+
+def check_claim_against_target_ensemble(claim, target_path, target_content, n=3):
+    """Single-claim form: n samples of one claim against one target, unioned.
+    Raises RuntimeError if every sample failed."""
+    return check_claims_against_target([claim], target_path, target_content, n=n)

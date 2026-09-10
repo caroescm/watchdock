@@ -29,15 +29,21 @@ def line_matches(expected_line, findings):
 
 
 def score_case(case, findings):
-    """Returns 'TP', 'FP', 'FN', or 'TN' for one case given an approach's findings."""
+    """Returns the list of outcomes ('TP', 'FP', 'FN', 'TN') one case
+    contributes, given an approach's findings.
+
+    A drift case whose findings miss the expected line is a false negative
+    (the real stale line was not caught) *and*, if anything was flagged, a
+    false positive (the lines that were flagged are wrong). Counting it as
+    FN alone, as this used to, inflated precision."""
     predicted_drift = len(findings) > 0
     expected_drift = case["expected"]["drift"]
 
     if expected_drift:
-        correct = line_matches(case["expected"]["stale_line"], findings)
-        return "TP" if correct else "FN"
-    else:
-        return "FP" if predicted_drift else "TN"
+        if line_matches(case["expected"]["stale_line"], findings):
+            return ["TP"]
+        return ["FN", "FP"] if predicted_drift else ["FN"]
+    return ["FP"] if predicted_drift else ["TN"]
 
 
 def compute_metrics(scores):
@@ -66,14 +72,14 @@ def run(case_ids=None):
         t0 = time.time()
         baseline_findings = deterministic_check(diff, target_content)
         score = score_case(case, baseline_findings)
-        results["baseline"].append(score)
+        results["baseline"].extend(score)
         print(f"  baseline: {score} ({time.time()-t0:.1f}s)", flush=True)
 
         # --- Single-prompt LLM ---
         t0 = time.time()
         sp_findings = single_prompt_check(diff, target_path, target_content)
         score = score_case(case, sp_findings)
-        results["single_prompt"].append(score)
+        results["single_prompt"].extend(score)
         print(f"  single_prompt: {score} ({time.time()-t0:.1f}s)", flush=True)
 
         # --- Full pipeline (extract_claims -> per-claim 3x-ensemble checks, unioned) ---
@@ -84,7 +90,7 @@ def run(case_ids=None):
         else:
             full_findings = check_claims_against_target(claims, target_path, target_content)
         score = score_case(case, full_findings)
-        results["full_pipeline"].append(score)
+        results["full_pipeline"].extend(score)
         print(f"  full_pipeline: {score} ({time.time()-t0:.1f}s)", flush=True)
 
     print("\n" + "=" * 60)

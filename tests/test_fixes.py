@@ -1,60 +1,21 @@
-from watchdoc.fixes import _find_line_number, apply_fix, commit_fixes_to_branch, post_pr_suggestion
+from watchdoc.fixes import find_line_number, apply_fix, commit_fixes_to_branch, post_pr_suggestion
+from conftest import FakePR as _FakePR, FakeRepo as _FakeRepo
 from watchdoc.models import Delivery, Finding
 
 
-def test_find_line_number_exact_match():
+def testfind_line_number_exact_match():
     content = "line one\nline two\nline three\n"
-    assert _find_line_number(content, "line two") == 2
+    assert find_line_number(content, "line two") == 2
 
 
-def test_find_line_number_tolerates_surrounding_whitespace():
+def testfind_line_number_tolerates_surrounding_whitespace():
     content = "line one\n  line two  \nline three\n"
-    assert _find_line_number(content, "line two") == 2
+    assert find_line_number(content, "line two") == 2
 
 
-def test_find_line_number_no_match_returns_none():
+def testfind_line_number_no_match_returns_none():
     content = "line one\nline two\n"
-    assert _find_line_number(content, "not in here") is None
-
-
-class _FakeContentFile:
-    def __init__(self, sha):
-        self.sha = sha
-
-
-class _FakeRepo:
-    """Duck-typed stand-in for a PyGithub Repository — no real API calls."""
-
-    def __init__(self, update_error=None):
-        self.updated = None
-        self.update_calls = 0
-        self._update_error = update_error
-
-    def get_contents(self, path, ref):
-        return _FakeContentFile(sha="fake-sha-123")
-
-    def update_file(self, path, message, content, sha, branch):
-        self.update_calls += 1
-        if self._update_error:
-            raise self._update_error
-        self.updated = {"path": path, "message": message, "content": content, "branch": branch}
-
-
-class _FakePR:
-    head = type("Head", (), {"ref": "some-branch", "sha": "fake-head-sha"})()
-
-    def __init__(self, review_comment_error=None):
-        self.issue_comments = []
-        self.review_comments = []
-        self._review_comment_error = review_comment_error
-
-    def create_issue_comment(self, body):
-        self.issue_comments.append(body)
-
-    def create_review_comment(self, body, commit, path, line):
-        if self._review_comment_error:
-            raise self._review_comment_error
-        self.review_comments.append({"body": body, "path": path, "line": line})
+    assert find_line_number(content, "not in here") is None
 
 
 def _fix(line, fix, type_="semantic staleness", reason="Code now uses httpx."):
@@ -206,3 +167,12 @@ def test_post_pr_suggestion_falls_back_to_comment_when_github_rejects_line():
     assert result == Delivery.FALLBACK_COMMENT
     assert len(pr.issue_comments) == 1
     assert "Code now uses httpx." in pr.issue_comments[0]
+
+
+def test_post_pr_suggestion_logs_why_it_fell_back(caplog):
+    pr = _FakePR(review_comment_error=RuntimeError("422 line not in diff"))
+
+    with caplog.at_level("WARNING"):
+        post_pr_suggestion(pr, "README.md", "stale\n", stale_line="stale", fix_text="fresh")
+
+    assert "README.md:1" in caplog.text and "422 line not in diff" in caplog.text
