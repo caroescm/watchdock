@@ -36,7 +36,7 @@ jobs:
       contents: write        # commit fixes on agent-authored PRs
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: caroescm/GTCberlin@main
+      - uses: caroescm/watchdoc@main
         with:
           nvidia_api_key: ${{ secrets.NVIDIA_API_KEY }}
 ```
@@ -103,7 +103,7 @@ This 100% wasn't the first result — it came from diagnosing and fixing a real 
 ## Local development
 
 ```bash
-git clone https://github.com/caroescm/GTCberlin.git
+git clone https://github.com/caroescm/watchdoc.git
 cd GTCberlin
 python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-nat doesn't support 3.14 yet)
 pip install -r requirements.txt
