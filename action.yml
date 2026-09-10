@@ -22,8 +22,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        pip install -r ${{ github.action_path }}/requirements.txt
-        pip install -e ${{ github.action_path }}/watchdoc_detector
+        pip install ${{ github.action_path }} ${{ github.action_path }}/watchdoc_detector
     - name: Run Watchdoc
       shell: bash
       env:

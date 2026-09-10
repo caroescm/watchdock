@@ -2,7 +2,7 @@ from unittest.mock import patch
 
 import pytest
 
-from claims import (
+from watchdoc.claims import (
     parse_findings,
     parse_claims,
     format_diff,
@@ -152,7 +152,7 @@ def test_ensemble_degrades_gracefully_when_one_sample_fails():
     whole check crashed with nothing posted. A dropped sample should be
     treated as a missing vote, not a fatal error, as long as at least one
     sample succeeds."""
-    with patch("claims.check_claim_against_target", side_effect=[
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=[
         ConnectionError("boom"),
         "LINE: a real finding\nTYPE: semantic staleness\nREASON: r\n",
         "NONE",
@@ -166,7 +166,7 @@ def test_ensemble_degrades_gracefully_when_one_sample_fails():
 def test_ensemble_raises_when_all_samples_fail():
     """If every sample fails there's genuinely no result to report — this
     must raise rather than silently behave like a clean 'no drift' NONE."""
-    with patch("claims.check_claim_against_target", side_effect=ConnectionError("boom")):
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=ConnectionError("boom")):
         with pytest.raises(RuntimeError, match="README.md"):
             check_claim_against_target_ensemble("claims", "README.md", "content", n=3)
 
@@ -248,7 +248,7 @@ def test_check_claims_against_target_unions_findings_across_claims():
             return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
         return "LINE: stale line B\nTYPE: broken reference\nREASON: r2\n"
 
-    with patch("claims.check_claim_against_target", side_effect=fake_check):
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
         findings = check_claims_against_target(
             ["first claim", "second claim"], "README.md", "content", n=2
         )
@@ -265,7 +265,7 @@ def test_check_claims_against_target_drops_a_fully_failed_claim():
             raise ConnectionError("boom")
         return "LINE: stale line A\nTYPE: semantic staleness\nREASON: r1\n"
 
-    with patch("claims.check_claim_against_target", side_effect=fake_check):
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
         findings = check_claims_against_target(
             ["doomed claim", "healthy claim"], "README.md", "content", n=2
         )
@@ -275,6 +275,6 @@ def test_check_claims_against_target_drops_a_fully_failed_claim():
 
 
 def test_check_claims_against_target_raises_when_every_claim_fails():
-    with patch("claims.check_claim_against_target", side_effect=ConnectionError("boom")):
+    with patch("watchdoc.claims.check_claim_against_target", side_effect=ConnectionError("boom")):
         with pytest.raises(RuntimeError, match="README.md"):
             check_claims_against_target(["a", "b"], "README.md", "content", n=2)

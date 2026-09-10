@@ -35,9 +35,34 @@ def discover_targets(repo_root):
 
     existing = [
         path for path in candidates
-        if path not in ignore and os.path.isfile(os.path.join(repo_root, path))
+        if path not in ignore and _is_text_file(os.path.join(repo_root, path))
     ]
     return existing
+
+
+def _is_text_file(path, sample_bytes=8192):
+    """True for a regular file whose first bytes decode as UTF-8 text. A PNG
+    or PDF under docs/ is not a target: reading it as text would raise and
+    sending it to the model would be meaningless."""
+    if not os.path.isfile(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            sample = f.read(sample_bytes)
+    except OSError:
+        return False
+    if b"\x00" in sample:
+        return False
+    try:
+        sample.decode("utf-8")
+    except UnicodeDecodeError:
+        # A multi-byte character cut at the sample boundary also fails here;
+        # tolerate that by retrying without the last few bytes.
+        try:
+            sample[:-3].decode("utf-8")
+        except UnicodeDecodeError:
+            return False
+    return True
 
 
 def _load_config(repo_root):

@@ -5,14 +5,13 @@ requires = ["setuptools >= 64"]
 [project]
 name = "watchdoc_detector"
 version = "0.1.0"
+description = "NeMo Agent Toolkit entry point for the Watchdoc drift detector"
+requires-python = ">=3.11,<3.14"
+classifiers = ["Programming Language :: Python"]
 dependencies = [
   "nvidia-nat~=1.8",
+  "watchdoc",
 ]
-requires-python = ">=3.11,<3.14"
-description = "Custom NeMo Agent Toolkit Workflow"
-classifiers = ["Programming Language :: Python"]
-
-
 
 [project.entry-points.'nat.components']
 watchdoc_detector = "watchdoc_detector.register"

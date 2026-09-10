@@ -1,4 +1,4 @@
-from report import SUMMARY_MARKER, build_run_summary, upsert_run_summary, post_run_summary_safely
+from watchdoc.report import SUMMARY_MARKER, build_run_summary, upsert_run_summary, post_run_summary_safely
 
 
 def test_build_run_summary_no_claims():
@@ -40,6 +40,29 @@ def test_build_run_summary_lists_findings_with_reason_fix_and_delivery():
     assert "Always use `httpx` for HTTP calls." in summary
     assert "suggestion posted" in summary
     assert "### `AGENTS.md`" not in summary  # clean targets get no section
+
+
+def test_build_run_summary_reports_targets_that_could_not_be_checked():
+    """A target whose check crashed must be listed as unchecked, never read
+    as 'clean' by omission."""
+    summary = build_run_summary(
+        "human", ["README.md", "AGENTS.md"], ["a claim"],
+        {"README.md": []},
+        failed_targets={"AGENTS.md": "UnicodeDecodeError: bad byte"},
+    )
+
+    assert "1 target(s) could not be checked" in summary
+    assert "`AGENTS.md`: UnicodeDecodeError: bad byte" in summary
+
+
+def test_build_run_summary_labels_commit_failed_delivery():
+    findings = {"AGENTS.md": [{
+        "line": "old", "type": "semantic staleness", "reason": "r",
+        "fix": "new", "delivery": "commit_failed",
+    }]}
+    summary = build_run_summary("agent", ["AGENTS.md"], ["a claim"], findings)
+
+    assert "couldn't commit to this branch" in summary
 
 
 class _FakeComment:

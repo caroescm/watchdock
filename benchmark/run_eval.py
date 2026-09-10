@@ -2,17 +2,12 @@
 Runs every case in cases.py through three approaches (deterministic baseline,
 single-prompt LLM, full Watchdoc pipeline) and reports precision/recall/F1 for each.
 """
-import sys
-import os
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-
-from cases import CASES  # noqa: E402
-from baseline import deterministic_check  # noqa: E402
-from single_prompt import single_prompt_check  # noqa: E402
-from claims import extract_claims, parse_claims, check_claims_against_target, parse_findings  # noqa: E402
+from cases import CASES
+from baseline import deterministic_check
+from single_prompt import single_prompt_check
+from watchdoc.claims import extract_claims, parse_claims, check_claims_against_target, parse_findings
 
 
 def normalize(text):

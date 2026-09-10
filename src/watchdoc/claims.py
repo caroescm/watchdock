@@ -2,7 +2,7 @@ import fnmatch
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from nim_client import chat_completion
+from watchdoc.nim_client import chat_completion
 
 logger = logging.getLogger(__name__)
 

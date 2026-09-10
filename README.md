@@ -84,7 +84,7 @@ If nothing is affected, the summary comment simply reports a green "no drift det
   - *3x ensembles:* the model is measurably nondeterministic at `temperature=0` — the same call sometimes catches a real finding and sometimes misses it. Three samples unioned hedge that; a failed sample is a missing vote, not a fatal error.
   - *Streaming + whole-call retries:* non-streaming calls got connection-reset at ~4.5 minutes of silence by an intermediate proxy; mid-stream server errors aren't covered by SDK retries. Both observed in real runs, both handled.
   - *Bounded concurrency:* a global cap on simultaneous NIM requests, so (claims × ensemble × targets) fan-out can't stampede the free-tier API.
-- **Source layout:** `src/` (core logic: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `report.py`, `nim_client.py`), `watchdoc_detector/` (the NAT workflow package wrapping it), `tests/` (pytest suite, no network needed), `benchmark/` (eval harness — see below).
+- **Source layout:** `src/watchdoc/` (the core package: `targets.py`, `github_api.py`, `claims.py`, `fixes.py`, `report.py`, `nim_client.py`), `watchdoc_detector/` (the NAT workflow package, which depends on `watchdoc`), `tests/` (pytest suite, no network needed), `benchmark/` (eval harness — see below).
 
 ## Benchmark
 
@@ -104,11 +104,12 @@ This 100% wasn't the first result — it came from diagnosing and fixing a real 
 
 ```bash
 git clone https://github.com/caroescm/watchdoc.git
-cd GTCberlin
+cd watchdoc
 python3 -m venv venv && source venv/bin/activate   # Python 3.11-3.13 (nvidia-nat doesn't support 3.14 yet)
-pip install -r requirements.txt
-pip install -e watchdoc_detector
+pip install -e ".[dev]" -e watchdoc_detector
 ```
+
+The single `pip install` resolves both local packages together: `watchdoc` (core logic plus the `dev` extra for pytest) and `watchdoc_detector` (the NAT entry point, which depends on `watchdoc`).
 
 Run the test suite (no API key needed — these test pure logic, not live model calls):
 
@@ -116,11 +117,16 @@ Run the test suite (no API key needed — these test pure logic, not live model 
 python3 -m pytest tests/ -v
 ```
 
-Run the actual pipeline locally against a real PR (needs `NVIDIA_API_KEY` and `GITHUB_TOKEN` env vars set):
+Run the actual pipeline locally against a real PR. It needs `NVIDIA_API_KEY`, `GITHUB_TOKEN` and `GITHUB_REPOSITORY` set, plus the PR number in the input (inside GitHub Actions the PR comes from the event payload instead):
 
 ```bash
-nat run --config_file watchdoc_detector/src/watchdoc_detector/configs/config.yml --input "check this PR"
+cd /path/to/the/repo/you/want/to/check       # or set repo_root in config.yml
+GITHUB_REPOSITORY=owner/repo nat run \
+  --config_file /path/to/watchdoc/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
+  --input "check PR #12"
 ```
+
+Model, ensemble size, concurrency cap, timeout and the scanned checkout are all fields on the workflow in [`config.yml`](watchdoc_detector/src/watchdoc_detector/configs/config.yml); the defaults are listed there.
 
 ## Compatibility
 

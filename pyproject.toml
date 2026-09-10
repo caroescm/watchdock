@@ -1,0 +1,28 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools >= 64"]
+
+[project]
+name = "watchdoc"
+version = "0.1.0"
+description = "Catches semantic drift in docs and AI-agent instruction files on every PR"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "PyGithub>=2.0",
+  "openai>=1.0",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# benchmark/ is a set of scripts, not a package; expose it to the tests that
+# exercise the deterministic baseline without a sys.path hack in conftest.
+pythonpath = ["benchmark"]

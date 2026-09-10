@@ -17,16 +17,23 @@ _DELIVERY_LABELS = {
     "suggestion_posted": "💡 one-click suggestion posted",
     "fallback_comment": "💬 explanation posted as a PR comment",
     "not_applied_no_match": "⚠️ couldn't auto-apply (line not matched verbatim)",
+    "commit_failed": "⚠️ couldn't commit to this branch (fork PR or read-only token?) — "
+                     "posted as a suggestion instead",
 }
 
 
-def build_run_summary(origin, targets, claims, findings_by_target):
+def build_run_summary(origin, targets, claims, findings_by_target, failed_targets=None):
     """Pure markdown builder, no API calls.
 
     findings_by_target: {target_path: [finding dicts with 'fix' and
     'delivery' added by the delivery step]}. Targets with no findings map
     to an empty list.
+
+    failed_targets: {target_path: error message} for targets whose check
+    crashed. They are reported rather than hidden, so a run that couldn't
+    check a file never reads as "this file is fine".
     """
+    failed_targets = failed_targets or {}
     total = sum(len(f) for f in findings_by_target.values())
     affected = sum(1 for f in findings_by_target.values() if f)
 
@@ -49,6 +56,11 @@ def build_run_summary(origin, targets, claims, findings_by_target):
         f"**PR origin:** {origin} · **Targets checked:** "
         + (", ".join(f"`{t}`" for t in targets) if targets else "none found"),
     ]
+
+    if failed_targets:
+        lines += ["", f"⚠️ **{len(failed_targets)} target(s) could not be checked** — "
+                      "see the Action log for the full traceback:"]
+        lines += [f"- `{path}`: {error}" for path, error in failed_targets.items()]
 
     if claims:
         lines += ["", f"<details><summary>🔍 Claims extracted from this diff ({len(claims)})</summary>", ""]

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import nim_client
+from watchdoc import nim_client
 
 
 def _fake_chunk(content):
@@ -30,7 +30,7 @@ def test_chat_completion_retries_after_mid_stream_failure():
     fake_client = MagicMock()
     fake_client.chat.completions.create.side_effect = fake_create
 
-    with patch("nim_client.get_client", return_value=fake_client):
+    with patch("watchdoc.nim_client.get_client", return_value=fake_client):
         result = nim_client.chat_completion("prompt")
 
     assert result == "LINE: x\n"
@@ -41,7 +41,7 @@ def test_chat_completion_raises_after_exhausting_all_stream_retries():
     fake_client = MagicMock()
     fake_client.chat.completions.create.side_effect = RuntimeError("Internal server error")
 
-    with patch("nim_client.get_client", return_value=fake_client):
+    with patch("watchdoc.nim_client.get_client", return_value=fake_client):
         with pytest.raises(RuntimeError, match="Internal server error"):
             nim_client.chat_completion("prompt")
 
@@ -61,7 +61,7 @@ def test_chat_completion_ignores_chunks_with_no_content():
     fake_client = MagicMock()
     fake_client.chat.completions.create.return_value = iter(stream)
 
-    with patch("nim_client.get_client", return_value=fake_client):
+    with patch("watchdoc.nim_client.get_client", return_value=fake_client):
         result = nim_client.chat_completion("prompt")
 
     assert result == "real answer"
@@ -87,7 +87,7 @@ def test_chat_completion_caps_concurrent_requests():
     fake_client.chat.completions.create.side_effect = fake_create
     results = []
 
-    with patch("nim_client.get_client", return_value=fake_client), \
+    with patch("watchdoc.nim_client.get_client", return_value=fake_client), \
          patch.object(nim_client, "_request_slots", threading.BoundedSemaphore(2)):
         threads = [
             threading.Thread(target=lambda: results.append(nim_client.chat_completion("p")))

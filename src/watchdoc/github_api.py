@@ -4,16 +4,25 @@ import os
 from github import Github
 
 
-def get_pr_context():
-    """Reads which PR triggered this run and returns (repo, pr) objects."""
+def get_pr_context(pr_number=None):
+    """Returns (repo, pr) for the PR this run is about.
+
+    Inside a GitHub Action the PR comes from the workflow's event payload.
+    For a local run there is no payload, so callers pass pr_number
+    explicitly (the NAT entry point takes it from the `--input` text)."""
     token = os.environ["GITHUB_TOKEN"]
     repo_name = os.environ["GITHUB_REPOSITORY"]
-    event_path = os.environ["GITHUB_EVENT_PATH"]
 
-    with open(event_path) as f:
-        event = json.load(f)
-
-    pr_number = event["pull_request"]["number"]
+    if pr_number is None:
+        event_path = os.environ.get("GITHUB_EVENT_PATH")
+        if not event_path:
+            raise RuntimeError(
+                "No PR to check: GITHUB_EVENT_PATH is not set and no PR number was given. "
+                "For a local run, pass the PR in the input, e.g. --input 'check PR #12'."
+            )
+        with open(event_path) as f:
+            event = json.load(f)
+        pr_number = event["pull_request"]["number"]
 
     gh = Github(token)
     repo = gh.get_repo(repo_name)

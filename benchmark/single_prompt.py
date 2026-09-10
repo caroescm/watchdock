@@ -3,11 +3,7 @@ Single-prompt variant — one NIM call does the whole job (find + explain drift)
 at once, no separate extract_claims/check_claim_against_target steps and no
 agent framework. Isolates whether the two-step pipeline actually matters.
 """
-import sys
-import os
-
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
-from nim_client import chat_completion  # noqa: E402
+from watchdoc.nim_client import chat_completion
 
 
 def single_prompt_check(diff, target_path, target_content):

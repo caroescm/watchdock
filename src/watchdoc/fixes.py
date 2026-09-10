@@ -1,6 +1,6 @@
 import logging
 
-from nim_client import chat_completion
+from watchdoc.nim_client import chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -73,37 +73,85 @@ def post_pr_suggestion(pr, target_path, target_content, stale_line, fix_text,
         return "fallback_comment"
 
 
-def commit_fix_to_branch(repo, pr, target_path, target_content, stale_line, fix_text,
-                         finding_type="drift", reason=""):
-    """Directly commits the corrected file content to the PR's branch. Used only
-    for agent-authored PRs (see detect_pr_origin) — the reviewer still sees the
+def apply_fix(content, stale_line, fix_text):
+    """Replaces the first verbatim occurrence of stale_line in content.
+    Returns the new content, or None if the line doesn't appear verbatim —
+    the caller must refuse to guess rather than commit a wrong edit."""
+    if not stale_line or stale_line not in content:
+        return None
+    return content.replace(stale_line, fix_text, 1)
+
+
+def commit_fixes_to_branch(repo, pr, target_path, target_content, fixes):
+    """Applies every fix for one target file to a single working copy and
+    commits the result to the PR's branch in one commit. Used only for
+    agent-authored PRs (see detect_pr_origin) — the reviewer still sees the
     fix as part of the PR before merge, just without an extra manual step.
 
-    Also leaves a PR comment saying exactly what was changed and why, so the
-    committed fix never lands silently — without it the only trace would be
+    `fixes` is a list of finding dicts carrying 'line', 'fix', and optionally
+    'type' and 'reason'. Returns one delivery status per fix, in order:
+
+    - "committed": the replacement is in the commit.
+    - "not_applied_no_match": the stale line wasn't found verbatim in the
+      file as it stood after the earlier fixes, so it was skipped.
+    - "commit_failed": the line matched but GitHub refused the commit (a fork
+      PR whose branch isn't in this repo, a read-only token, a branch that
+      moved). The fix is delivered as a review suggestion instead so it still
+      reaches the reviewer.
+
+    Applying all fixes to one running copy is what makes several findings in
+    the same file safe: committing each finding from the original content
+    would have each commit silently revert the previous one.
+
+    Also leaves one PR comment listing exactly what changed and why, so the
+    committed fixes never land silently — without it the only trace would be
     an extra commit in the branch history."""
-    updated_content = target_content.replace(stale_line, fix_text)
+    statuses = []
+    applied = []  # (index, finding) for fixes that matched
+    content = target_content
+    for index, finding in enumerate(fixes):
+        updated = apply_fix(content, finding["line"], finding["fix"])
+        if updated is None:
+            statuses.append("not_applied_no_match")
+            continue
+        content = updated
+        applied.append((index, finding))
+        statuses.append("committed")
 
-    if updated_content == target_content:
-        # stale_line didn't match anything verbatim — refuse to guess, don't commit
-        return "not_applied_no_match"
-
-    current_file = repo.get_contents(target_path, ref=pr.head.ref)
-    repo.update_file(
-        path=target_path,
-        message=f"Watchdoc: fix stale claim in {target_path}",
-        content=updated_content,
-        sha=current_file.sha,
-        branch=pr.head.ref,
-    )
+    if not applied:
+        return statuses
 
     try:
-        pr.create_issue_comment(
-            f"🔧 **Watchdoc — {finding_type}**: committed a fix to `{target_path}` on this branch.\n\n"
-            f"**Why:** {reason}\n\n**Old:**\n> {stale_line}\n\n**New:**\n> {fix_text}"
+        current_file = repo.get_contents(target_path, ref=pr.head.ref)
+        repo.update_file(
+            path=target_path,
+            message=f"Watchdoc: fix {len(applied)} stale claim(s) in {target_path}",
+            content=content,
+            sha=current_file.sha,
+            branch=pr.head.ref,
         )
     except Exception:
-        # The fix itself landed; a failed comment shouldn't fail the run.
-        logger.warning("Committed fix to %s but couldn't post the explanatory comment",
+        logger.warning("Couldn't commit fixes to %s on %s; falling back to review suggestions",
+                       target_path, pr.head.ref, exc_info=True)
+        for index, finding in applied:
+            post_pr_suggestion(
+                pr, target_path, target_content, finding["line"], finding["fix"],
+                finding_type=finding.get("type", "drift"), reason=finding.get("reason", ""),
+            )
+            statuses[index] = "commit_failed"
+        return statuses
+
+    changes = "\n\n".join(
+        f"**{finding.get('type', 'drift')}** — {finding.get('reason', '')}\n\n"
+        f"**Old:**\n> {finding['line']}\n\n**New:**\n> {finding['fix']}"
+        for _, finding in applied
+    )
+    try:
+        pr.create_issue_comment(
+            f"🔧 **Watchdoc**: committed {len(applied)} fix(es) to `{target_path}` on this branch.\n\n{changes}"
+        )
+    except Exception:
+        # The fixes themselves landed; a failed comment shouldn't fail the run.
+        logger.warning("Committed fixes to %s but couldn't post the explanatory comment",
                        target_path, exc_info=True)
-    return "committed"
+    return statuses

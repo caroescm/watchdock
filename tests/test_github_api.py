@@ -1,4 +1,6 @@
-from github_api import detect_pr_origin_from_data
+import pytest
+
+from watchdoc.github_api import detect_pr_origin_from_data, get_pr_context
 
 
 def test_human_pr_no_trailers():
@@ -36,3 +38,12 @@ def test_one_agent_commit_among_many_human_commits_still_flags_agent():
         "Agent commit\n\nCo-Authored-By: Claude <noreply@anthropic.com>",
     ]
     assert detect_pr_origin_from_data(messages, "caroescm") == "agent"
+
+
+def test_get_pr_context_without_event_payload_or_pr_number_explains_what_to_do(monkeypatch):
+    monkeypatch.setenv("GITHUB_TOKEN", "t")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+    monkeypatch.delenv("GITHUB_EVENT_PATH", raising=False)
+
+    with pytest.raises(RuntimeError, match="PR #12"):
+        get_pr_context()

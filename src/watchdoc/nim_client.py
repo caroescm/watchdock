@@ -52,16 +52,51 @@ _MAX_STREAM_RETRIES = 2
 # is abandoned, so it can't cost recall the way the reverted capped-wait
 # ensemble did).
 _MAX_CONCURRENT_REQUESTS = int(os.environ.get("WATCHDOC_MAX_CONCURRENT_NIM_CALLS", "8"))
+
+BASE_URL = "https://integrate.api.nvidia.com/v1"
+
+# Runtime settings. The module constants above are the defaults; the NAT
+# entry point overrides them from its workflow config via configure(), so the
+# model, timeout and concurrency cap are tunable from config.yml rather than
+# only by editing this file.
+_settings = {
+    "model": MODEL,
+    "timeout_seconds": _TIMEOUT_SECONDS,
+    "max_concurrent_requests": _MAX_CONCURRENT_REQUESTS,
+}
 _request_slots = threading.BoundedSemaphore(_MAX_CONCURRENT_REQUESTS)
+_client = None
+_client_lock = threading.Lock()
+
+
+def configure(model=None, timeout_seconds=None, max_concurrent_requests=None):
+    """Applies workflow-level settings. Call once, before any chat_completion."""
+    global _request_slots, _client
+    with _client_lock:
+        if model:
+            _settings["model"] = model
+        if timeout_seconds:
+            _settings["timeout_seconds"] = timeout_seconds
+        if max_concurrent_requests:
+            _settings["max_concurrent_requests"] = max_concurrent_requests
+            _request_slots = threading.BoundedSemaphore(max_concurrent_requests)
+        _client = None  # rebuilt lazily with the new timeout
 
 
 def get_client():
-    return OpenAI(
-        base_url="https://integrate.api.nvidia.com/v1",
-        api_key=os.environ["NVIDIA_API_KEY"],
-        timeout=_TIMEOUT_SECONDS,
-        max_retries=_MAX_RETRIES,
-    )
+    """One OpenAI client per process, so connections are pooled and reused
+    across the (claims x ensemble x targets) fan-out instead of a fresh
+    client (and TLS handshake) per call."""
+    global _client
+    with _client_lock:
+        if _client is None:
+            _client = OpenAI(
+                base_url=BASE_URL,
+                api_key=os.environ["NVIDIA_API_KEY"],
+                timeout=_settings["timeout_seconds"],
+                max_retries=_MAX_RETRIES,
+            )
+        return _client
 
 
 def chat_completion(prompt, enable_thinking=True):
@@ -94,7 +129,7 @@ def chat_completion(prompt, enable_thinking=True):
         try:
             with _request_slots:
                 stream = client.chat.completions.create(
-                    model=MODEL,
+                    model=_settings["model"],
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
                     max_tokens=_MAX_TOKENS_THINKING if enable_thinking else _MAX_TOKENS_FAST,
