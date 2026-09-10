@@ -1,4 +1,4 @@
-name: 'Watchdoc'
+name: 'Watchdock'
 description: 'Catches semantic drift in docs and AI-agent instruction files on every PR'
 inputs:
   nvidia_api_key:
@@ -36,8 +36,8 @@ runs:
         # constraints.txt pins every transitive dependency to the versions the
         # test suite and benchmark ran against; refresh it deliberately, not per PR.
         pip install -c ${{ github.action_path }}/constraints.txt \
-          ${{ github.action_path }} ${{ github.action_path }}/watchdoc_detector
-    - name: Run Watchdoc
+          ${{ github.action_path }} ${{ github.action_path }}/watchdock_detector
+    - name: Run Watchdock
       shell: bash
       env:
         NVIDIA_API_KEY: ${{ inputs.nvidia_api_key }}
@@ -45,6 +45,6 @@ runs:
       run: |
         set -euo pipefail
         nat run \
-          --config_file ${{ github.action_path }}/watchdoc_detector/src/watchdoc_detector/configs/config.yml \
+          --config_file ${{ github.action_path }}/watchdock_detector/src/watchdock_detector/configs/config.yml \
           --override workflow.commit_fixes ${{ inputs.commit_fixes }} \
           --input "check this PR"

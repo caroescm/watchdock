@@ -1,5 +1,5 @@
 from baseline import deterministic_check
-from watchdoc.models import DiffEntry, FindingType
+from watchdock.models import DiffEntry, FindingType
 
 
 def test_catches_literal_removal():
@@ -37,5 +37,5 @@ def test_cannot_catch_semantic_only_drift():
     target_content = "`--verbose` prints extra debug output for any command."
 
     # The flag "--verbose" is still present, so the naive checker sees no
-    # removal — this is exactly the gap Watchdoc's semantic reasoning fills.
+    # removal — this is exactly the gap Watchdock's semantic reasoning fills.
     assert deterministic_check(diff, target_content) == []

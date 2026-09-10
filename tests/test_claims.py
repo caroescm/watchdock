@@ -1,13 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
-from watchdoc.claims import (
+from watchdock.claims import (
     check_claims_against_targets,
     extract_claims,
     merge_findings,
     pool_size,
 )
-from watchdoc.models import DiffEntry, Finding, FindingType
+from watchdock.models import DiffEntry, Finding, FindingType
 
 
 def _finding(line, reason="r", kind=FindingType.SEMANTIC_STALENESS):
@@ -16,7 +16,7 @@ def _finding(line, reason="r", kind=FindingType.SEMANTIC_STALENESS):
 
 def test_extract_claims_makes_no_model_call_when_the_diff_is_fully_filtered():
     """Testable without an API key precisely because it must never reach the API."""
-    with patch("watchdoc.claims.nim_client.chat_completion") as chat:
+    with patch("watchdock.claims.nim_client.chat_completion") as chat:
         assert extract_claims([DiffEntry("LICENSE", "+MIT License")]) == []
 
     chat.assert_not_called()
@@ -53,7 +53,7 @@ def test_merge_findings_empty_input():
 
 
 def test_pool_size_is_bounded_by_tasks_then_by_explicit_cap_then_by_the_nim_cap():
-    with patch("watchdoc.claims.nim_client.max_concurrent_requests", return_value=8):
+    with patch("watchdock.claims.nim_client.max_concurrent_requests", return_value=8):
         assert pool_size(18) == 8            # capped by the NIM gate
         assert pool_size(2) == 2             # no more threads than tasks
         assert pool_size(18, max_workers=4) == 4
@@ -62,9 +62,9 @@ def test_pool_size_is_bounded_by_tasks_then_by_explicit_cap_then_by_the_nim_cap(
 
 def test_check_claims_against_targets_runs_one_pool_sized_by_pool_size():
     """targets x claims x samples run through one pool, never one per layer."""
-    with patch("watchdoc.claims.ThreadPoolExecutor", wraps=ThreadPoolExecutor) as pool, \
-         patch("watchdoc.claims.check_claim_against_target", return_value=[]), \
-         patch("watchdoc.claims.nim_client.max_concurrent_requests", return_value=8):
+    with patch("watchdock.claims.ThreadPoolExecutor", wraps=ThreadPoolExecutor) as pool, \
+         patch("watchdock.claims.check_claim_against_target", return_value=[]), \
+         patch("watchdock.claims.nim_client.max_concurrent_requests", return_value=8):
         check_claims_against_targets(["c1", "c2", "c3"], {"README.md": "a", "AGENTS.md": "b"}, n=3)   # 18 samples
         check_claims_against_targets(["c1"], {"README.md": "a"}, n=2)                                # 2 samples
         check_claims_against_targets(["c1"], {"README.md": "a", "AGENTS.md": "b"}, n=3, max_workers=4)
@@ -78,7 +78,7 @@ def test_check_claims_against_targets_unions_findings_across_claims():
             return [_finding("stale line A")]
         return [_finding("stale line B", kind=FindingType.BROKEN_REFERENCE)]
 
-    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
+    with patch("watchdock.claims.check_claim_against_target", side_effect=fake_check):
         findings, errors = check_claims_against_targets(["first claim", "second claim"], {"README.md": "c"}, n=2)
 
     assert sorted(f.line for f in findings["README.md"]) == ["stale line A", "stale line B"]
@@ -89,7 +89,7 @@ def test_a_failed_sample_is_a_missing_vote_not_a_fatal_error():
     """Seen live: ensemble samples hit connection errors and the whole check
     crashed with nothing posted. As long as one sample of a claim survives,
     its findings count."""
-    with patch("watchdoc.claims.check_claim_against_target", side_effect=[
+    with patch("watchdock.claims.check_claim_against_target", side_effect=[
         ConnectionError("boom"), [_finding("a real finding")], [],
     ]):
         findings, errors = check_claims_against_targets(["claim"], {"README.md": "c"}, n=3)
@@ -104,7 +104,7 @@ def test_a_fully_failed_claim_is_dropped_but_the_other_claims_still_count():
             raise ConnectionError("boom")
         return [_finding("stale line A")]
 
-    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
+    with patch("watchdock.claims.check_claim_against_target", side_effect=fake_check):
         findings, errors = check_claims_against_targets(["doomed claim", "healthy claim"], {"README.md": "c"}, n=2)
 
     assert [f.line for f in findings["README.md"]] == ["stale line A"]
@@ -118,7 +118,7 @@ def test_a_target_whose_every_claim_failed_is_an_error_and_the_others_still_repo
             raise ConnectionError("boom")
         return [_finding(f"{target_path}:{claim}")]
 
-    with patch("watchdoc.claims.check_claim_against_target", side_effect=fake_check):
+    with patch("watchdock.claims.check_claim_against_target", side_effect=fake_check):
         findings, errors = check_claims_against_targets(["c1", "c2"], {"README.md": "a", "AGENTS.md": "b"}, n=2)
 
     assert sorted(f.line for f in findings["README.md"]) == ["README.md:c1", "README.md:c2"]
@@ -127,7 +127,7 @@ def test_a_target_whose_every_claim_failed_is_an_error_and_the_others_still_repo
 
 
 def test_check_claims_against_targets_with_no_claims_returns_empty_findings_for_every_target():
-    with patch("watchdoc.claims.check_claim_against_target") as check:
+    with patch("watchdock.claims.check_claim_against_target") as check:
         findings, errors = check_claims_against_targets([], {"README.md": "a"}, n=3)
 
     assert findings == {"README.md": []} and errors == {}

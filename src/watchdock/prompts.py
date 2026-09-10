@@ -1,4 +1,4 @@
-"""Every prompt Watchdoc sends to the model, and nothing else.
+"""Every prompt Watchdock sends to the model, and nothing else.
 
 Keeping them here means a change to what the model is asked is a diff in
 this file alone, reviewable apart from the logic that sends it. Each

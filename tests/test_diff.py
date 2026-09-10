@@ -1,5 +1,5 @@
-from watchdoc.diff import format_diff, is_relevant, relevant_entries
-from watchdoc.models import DiffEntry
+from watchdock.diff import format_diff, is_relevant, relevant_entries
+from watchdock.models import DiffEntry
 
 
 def test_format_diff_joins_multiple_files():

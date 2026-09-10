@@ -1,4 +1,4 @@
-"""The whole Watchdoc run, as plain synchronous code with no host dependency.
+"""The whole Watchdock run, as plain synchronous code with no host dependency.
 
 Phases: locate the PR and its targets, extract claims from the diff, check
 every (target x claim x sample) through one bounded pool, then draft and
@@ -10,7 +10,7 @@ or delivered is recorded and reported, the other targets still complete,
 the summary is still posted, and only then does the run fail, so the
 Action goes red without hiding what was checked.
 
-The NAT entry point in the ``watchdoc_detector`` package is a thin adapter
+The NAT entry point in the ``watchdock_detector`` package is a thin adapter
 over ``run_pipeline``; everything testable lives here.
 """
 import logging
@@ -19,14 +19,14 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
-from watchdoc import env
-from watchdoc.claims import DEFAULT_ENSEMBLE_SIZE, check_claims_against_targets, extract_claims, pool_size
-from watchdoc.errors import PipelineError
-from watchdoc.fixes import commit_fixes_to_branch, draft_fix, post_pr_suggestion
-from watchdoc.github_api import detect_pr_origin, get_diff, get_file_at, get_pr_context
-from watchdoc.models import DeliveryMode, Finding, Origin
-from watchdoc.report import build_run_summary, post_run_summary_safely
-from watchdoc.targets import discover_targets
+from watchdock import env
+from watchdock.claims import DEFAULT_ENSEMBLE_SIZE, check_claims_against_targets, extract_claims, pool_size
+from watchdock.errors import PipelineError
+from watchdock.fixes import commit_fixes_to_branch, draft_fix, post_pr_suggestion
+from watchdock.github_api import detect_pr_origin, get_diff, get_file_at, get_pr_context
+from watchdock.models import DeliveryMode, Finding, Origin
+from watchdock.report import build_run_summary, post_run_summary_safely
+from watchdock.targets import discover_targets
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +165,7 @@ def run_pipeline(repo_root: str, options: RunOptions = DEFAULT_OPTIONS) -> str:
 
     if failed_targets:
         raise PipelineError(
-            f"Watchdoc could not fully process {len(failed_targets)} target(s): "
+            f"Watchdock could not fully process {len(failed_targets)} target(s): "
             + ", ".join(failed_targets))
     return summary
 

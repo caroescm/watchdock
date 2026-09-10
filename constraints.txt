@@ -1,6 +1,6 @@
-# Every package the action installs (watchdoc + watchdoc_detector on a clean
+# Every package the action installs (watchdock + watchdock_detector on a clean
 # Python 3.12), pinned to the versions the test suite and benchmark ran against.
-# Regenerate deliberately: fresh venv, pip install -c constraints.txt . ./watchdoc_detector, pip freeze.
+# Regenerate deliberately: fresh venv, pip install -c constraints.txt . ./watchdock_detector, pip freeze.
 aiofiles==25.1.0
 annotated-doc==0.0.5
 annotated-types==0.8.0

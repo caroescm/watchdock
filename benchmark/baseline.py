@@ -6,7 +6,7 @@ agent-instruction-file tool can do.
 """
 import re
 
-from watchdoc.models import DiffEntry, Finding, FindingType
+from watchdock.models import DiffEntry, Finding, FindingType
 
 
 def deterministic_check(diff: list[DiffEntry], target_content: str) -> list[Finding]:

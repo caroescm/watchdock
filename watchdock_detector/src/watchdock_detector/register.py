@@ -2,6 +2,6 @@
 
 Importing the workflow function is what registers it with NAT.
 """
-from watchdoc_detector.watchdoc_detector import watchdoc_detector_function
+from watchdock_detector.watchdock_detector import watchdock_detector_function
 
-__all__ = ["watchdoc_detector_function"]
+__all__ = ["watchdock_detector_function"]

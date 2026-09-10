@@ -6,9 +6,9 @@ import httpx
 import openai
 import pytest
 
-from watchdoc import nim_client
-from watchdoc.errors import ConfigError
-from watchdoc.nim_client import NimClient, Settings, backoff_seconds, is_retryable
+from watchdock import nim_client
+from watchdock.errors import ConfigError
+from watchdock.nim_client import NimClient, Settings, backoff_seconds, is_retryable
 
 
 def _chunk(content):

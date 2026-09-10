@@ -3,15 +3,15 @@ build-backend = "setuptools.build_meta"
 requires = ["setuptools >= 64"]
 
 [project]
-name = "watchdoc_detector"
+name = "watchdock_detector"
 version = "0.1.0"
-description = "NeMo Agent Toolkit entry point for the Watchdoc drift detector"
+description = "NeMo Agent Toolkit entry point for the Watchdock drift detector"
 requires-python = ">=3.11,<3.14"
 classifiers = ["Programming Language :: Python"]
 dependencies = [
   "nvidia-nat~=1.8",
-  "watchdoc==0.1.0",
+  "watchdock==0.1.0",
 ]
 
 [project.entry-points.'nat.components']
-watchdoc_detector = "watchdoc_detector.register"
+watchdock_detector = "watchdock_detector.register"

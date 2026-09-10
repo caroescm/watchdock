@@ -8,9 +8,9 @@ wasn't asked for.
 """
 import logging
 
-from watchdoc import nim_client
-from watchdoc.models import Delivery, Finding
-from watchdoc.prompts import draft_fix_prompt
+from watchdock import nim_client
+from watchdock.models import Delivery, Finding
+from watchdock.prompts import draft_fix_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def apply_fix(content: str, stale_line: str, fix_text: str) -> str | None:
 
 
 def _explanation(target_path: str, finding: Finding) -> str:
-    return f"🔎 **Watchdoc — {finding.kind}** in `{target_path}`: {finding.reason}"
+    return f"🔎 **Watchdock — {finding.kind}** in `{target_path}`: {finding.reason}"
 
 
 def post_pr_suggestion(pr, target_path: str, target_content: str, finding: Finding) -> Delivery:
@@ -149,7 +149,7 @@ def commit_fixes_to_branch(repo, pr, target_path: str, target_content: str, find
         current_file = repo.get_contents(target_path, ref=pr.head.ref)
         repo.update_file(
             path=target_path,
-            message=f"Watchdoc: fix {len(applied)} stale claim(s) in {target_path}",
+            message=f"Watchdock: fix {len(applied)} stale claim(s) in {target_path}",
             content=content,
             sha=current_file.sha,
             branch=pr.head.ref,
@@ -169,7 +169,7 @@ def commit_fixes_to_branch(repo, pr, target_path: str, target_content: str, find
     )
     try:
         pr.create_issue_comment(
-            f"🔧 **Watchdoc**: committed {len(applied)} fix(es) to `{target_path}` on this branch.\n\n{changes}"
+            f"🔧 **Watchdock**: committed {len(applied)} fix(es) to `{target_path}` on this branch.\n\n{changes}"
         )
     except Exception:  # noqa: BLE001 — the fixes landed; a failed comment must not fail the run
         logger.warning("Committed fixes to %s but couldn't post the explanatory comment",

@@ -9,11 +9,11 @@ over targets x claims x ensemble samples through one bounded pool.
 import logging
 from concurrent.futures import ThreadPoolExecutor
 
-from watchdoc import nim_client
-from watchdoc.diff import format_diff, relevant_entries
-from watchdoc.models import DiffEntry, Finding
-from watchdoc.parsing import lines_overlap, normalize_line, parse_claims, parse_findings
-from watchdoc.prompts import check_claim_prompt, extract_claims_prompt
+from watchdock import nim_client
+from watchdock.diff import format_diff, relevant_entries
+from watchdock.models import DiffEntry, Finding
+from watchdock.parsing import lines_overlap, normalize_line, parse_claims, parse_findings
+from watchdock.prompts import check_claim_prompt, extract_claims_prompt
 
 logger = logging.getLogger(__name__)
 

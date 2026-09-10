@@ -1,8 +1,8 @@
-# Watchdoc-Bench
+# Watchdock-Bench
 
 A self-built eval set of ~20 hand-crafted PR cases against a small sample repo
 (`benchmark/sample_repo/` — a tiny Node.js CLI tool with a README and an
-`AGENTS.md`), used to sanity-check that Watchdoc's approach actually catches
+`AGENTS.md`), used to sanity-check that Watchdock's approach actually catches
 drift better than the alternatives. This is **not** an industry benchmark —
 it's a small, self-authored set designed to test one specific claim: that
 semantic reasoning catches drift a deterministic checker structurally cannot.
@@ -18,7 +18,7 @@ Three approaches are run on the same cases:
 2. **Single-prompt LLM** (`benchmark/single_prompt.py`) — one NIM call does
    the whole "find + explain" job at once, no agent framework, no separate
    claim-extraction step.
-3. **Full pipeline** (Watchdoc's actual mechanism) — `extract_claims` +
+3. **Full pipeline** (Watchdock's actual mechanism) — `extract_claims` +
    a **3-way parallel ensemble** of `check_claim_against_target` calls,
    unioned. See "The optimization journey" below for why it's an ensemble,
    not a single call.
@@ -44,7 +44,7 @@ Of the 20 designed cases, **9 were run** against all three approaches
 |---|---|---|---|---|---|---|---|
 | Deterministic baseline | 4 | 0 | 3 | 2 | 1.00 | 0.57 | 0.73 |
 | Single-prompt LLM | 5 | 0 | 2 | 2 | 1.00 | 0.71 | 0.83 |
-| **Full pipeline (Watchdoc)** | **7** | **0** | **0** | **2** | **1.00** | **1.00** | **1.00** |
+| **Full pipeline (Watchdock)** | **7** | **0** | **0** | **2** | **1.00** | **1.00** | **1.00** |
 
 All three approaches had **zero false positives** across every run — none of
 them hallucinate drift on a clean diff, at least on this eval set.
@@ -55,13 +55,13 @@ them hallucinate drift on a clean diff, at least on this eval set.
 |---|---|
 | Deterministic baseline | **0%** (0/3) |
 | Single-prompt LLM | 67% (2/3) |
-| **Full pipeline (Watchdoc)** | **100%** (3/3) |
+| **Full pipeline (Watchdock)** | **100%** (3/3) |
 
 These three cases (`instr_deterministic_02`, `doc_semantic_02`,
 `doc_semantic_03`) were specifically designed so the identifier/text a
 deterministic checker would look for never disappears from the diff — only
 the *behavior* it describes changes. A checker like Evidoc structurally
-cannot catch these; Watchdoc's semantic reasoning does, 3 for 3.
+cannot catch these; Watchdock's semantic reasoning does, 3 for 3.
 
 ## The optimization journey (worth reading, not just the final number)
 

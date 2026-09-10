@@ -1,4 +1,4 @@
-"""Watchdoc core: detects semantic drift in docs and AI-agent instruction files
+"""Watchdock core: detects semantic drift in docs and AI-agent instruction files
 against a PR diff, drafts fixes, and delivers them to the PR.
 
 Module map, in pipeline order:
@@ -15,8 +15,8 @@ Module map, in pipeline order:
 - ``nim_client``  the model client: streaming, retries, concurrency gate
 - ``models``      the frozen dataclasses and enums every stage shares
 - ``env``         every environment variable, in one place
-- ``errors``      the exceptions Watchdoc raises on purpose
+- ``errors``      the exceptions Watchdock raises on purpose
 
 The NeMo Agent Toolkit entry point that hosts the pipeline lives in the
-separate ``watchdoc_detector`` package, which depends on this one.
+separate ``watchdock_detector`` package, which depends on this one.
 """

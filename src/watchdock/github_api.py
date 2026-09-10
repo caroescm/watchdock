@@ -7,9 +7,9 @@ from collections.abc import Iterable
 
 from github import Github
 
-from watchdoc import env
-from watchdoc.errors import ConfigError
-from watchdoc.models import DiffEntry, Origin
+from watchdock import env
+from watchdock.errors import ConfigError
+from watchdock.models import DiffEntry, Origin
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +78,7 @@ _AGENT_TRAILER = re.compile(
 )
 
 # Bot accounts that are AI coding agents opening PRs under their own login.
-# Being on this list means Watchdoc may commit straight onto the PR branch,
+# Being on this list means Watchdock may commit straight onto the PR branch,
 # so only agents that keep their branches (no force-push over external
 # commits) belong here.
 AGENT_LOGINS = {

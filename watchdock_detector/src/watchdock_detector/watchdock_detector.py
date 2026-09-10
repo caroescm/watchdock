@@ -1,16 +1,16 @@
-"""NeMo Agent Toolkit entry point for Watchdoc.
+"""NeMo Agent Toolkit entry point for Watchdock.
 
 NAT's role here is deliberate and limited: it is the host. It registers this
-function, parses ``config.yml`` into :class:`WatchdocDetectorFunctionConfig`,
+function, parses ``config.yml`` into :class:`WatchdockDetectorFunctionConfig`,
 and runs it via ``nat run``. The model calls themselves go through
-``watchdoc.nim_client`` (an OpenAI-compatible client against NVIDIA NIM), not
+``watchdock.nim_client`` (an OpenAI-compatible client against NVIDIA NIM), not
 NAT's ``llms:`` abstraction, because the pipeline depends on two things that
 abstraction does not expose: the per-call Nemotron ``enable_thinking`` switch
 sent as ``chat_template_kwargs``, and whole-call retries around a streamed
 response. Everything an operator would want to tune is therefore a field on
 the function config below.
 
-The pipeline itself is ``watchdoc.pipeline.run_pipeline``: synchronous code
+The pipeline itself is ``watchdock.pipeline.run_pipeline``: synchronous code
 with no NAT dependency, run in a worker thread via ``asyncio.to_thread`` so
 NAT's event loop is never blocked.
 """
@@ -20,16 +20,16 @@ from dataclasses import replace
 from nat.plugin_api import Builder, FunctionBaseConfig, FunctionInfo, register_function
 from pydantic import Field
 
-from watchdoc import nim_client
-from watchdoc.claims import DEFAULT_ENSEMBLE_SIZE
-from watchdoc.pipeline import RunOptions, parse_pr_number, resolve_repo_root, run_pipeline
+from watchdock import nim_client
+from watchdock.claims import DEFAULT_ENSEMBLE_SIZE
+from watchdock.pipeline import RunOptions, parse_pr_number, resolve_repo_root, run_pipeline
 
 _DEFAULTS = nim_client.DEFAULT_SETTINGS
 
 
-class WatchdocDetectorFunctionConfig(FunctionBaseConfig, name="watchdoc_detector"):
+class WatchdockDetectorFunctionConfig(FunctionBaseConfig, name="watchdock_detector"):
     """
-    Watchdoc drift detector: checks docs and AI-agent instruction files for semantic drift against a PR diff.
+    Watchdock drift detector: checks docs and AI-agent instruction files for semantic drift against a PR diff.
     """
 
     repo_root: str | None = Field(
@@ -64,10 +64,10 @@ class WatchdocDetectorFunctionConfig(FunctionBaseConfig, name="watchdoc_detector
     )
 
 
-@register_function(config_type=WatchdocDetectorFunctionConfig)
-async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, builder: Builder):
+@register_function(config_type=WatchdockDetectorFunctionConfig)
+async def watchdock_detector_function(config: WatchdockDetectorFunctionConfig, builder: Builder):
     """
-    Registers the Watchdoc drift-detection workflow (addressable via `watchdoc_detector` in configuration).
+    Registers the Watchdock drift-detection workflow (addressable via `watchdock_detector` in configuration).
     """
     nim_client.configure(
         model=config.model,
@@ -82,9 +82,9 @@ async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, bui
         commit_fixes=config.commit_fixes,
     )
 
-    async def run_watchdoc_check(task: str) -> str:
+    async def run_watchdock_check(task: str) -> str:
         """
-        Runs the full Watchdoc pipeline against a PR: discovers target files,
+        Runs the full Watchdock pipeline against a PR: discovers target files,
         fetches the diff, extracts claims, checks each target for drift, and for
         every real finding drafts a fix and delivers it — as a suggestion comment
         for human-authored PRs, or a direct commit for agent-authored PRs. The PR
@@ -94,4 +94,4 @@ async def watchdoc_detector_function(config: WatchdocDetectorFunctionConfig, bui
         return await asyncio.to_thread(
             run_pipeline, repo_root, replace(options, pr_number=parse_pr_number(task)))
 
-    yield FunctionInfo.from_fn(run_watchdoc_check, description=run_watchdoc_check.__doc__)
+    yield FunctionInfo.from_fn(run_watchdock_check, description=run_watchdock_check.__doc__)

@@ -3,7 +3,7 @@ build-backend = "setuptools.build_meta"
 requires = ["setuptools >= 64"]
 
 [project]
-name = "watchdoc"
+name = "watchdock"
 version = "0.1.0"
 description = "Catches semantic drift in docs and AI-agent instruction files on every PR"
 requires-python = ">=3.11,<3.14"
@@ -31,7 +31,7 @@ pythonpath = ["benchmark"]
 [tool.ruff]
 line-length = 120
 target-version = "py311"
-src = ["src", "watchdoc_detector/src", "benchmark", "tests"]
+src = ["src", "watchdock_detector/src", "benchmark", "tests"]
 
 [tool.ruff.lint]
 # BLE: every broad `except Exception` must carry a `# noqa: BLE001` with the
@@ -40,8 +40,8 @@ select = ["E", "F", "W", "B", "BLE", "I"]
 
 [tool.ruff.lint.per-file-ignores]
 # Prompt text and benchmark fixtures are data; wrapping them would change what the model sees.
-"src/watchdoc/prompts.py" = ["E501"]
+"src/watchdock/prompts.py" = ["E501"]
 "benchmark/cases.py" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["watchdoc", "watchdoc_detector"]
+known-first-party = ["watchdock", "watchdock_detector"]

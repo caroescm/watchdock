@@ -1,8 +1,8 @@
 import pytest
 
-from watchdoc.errors import ConfigError
-from watchdoc.github_api import NO_PATCH_PLACEHOLDER, detect_pr_origin_from_data, get_diff, get_pr_context
-from watchdoc.models import DiffEntry, Origin
+from watchdock.errors import ConfigError
+from watchdock.github_api import NO_PATCH_PLACEHOLDER, detect_pr_origin_from_data, get_diff, get_pr_context
+from watchdock.models import DiffEntry, Origin
 
 
 def test_human_pr_no_trailers():

@@ -7,7 +7,7 @@ matching change here.
 """
 import logging
 
-from watchdoc.models import Finding, FindingType
+from watchdock.models import Finding, FindingType
 
 logger = logging.getLogger(__name__)
 

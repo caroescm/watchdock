@@ -1,4 +1,4 @@
-name: Watchdoc
+name: Watchdock
 on:
   pull_request:
 

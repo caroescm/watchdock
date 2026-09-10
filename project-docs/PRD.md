@@ -1,4 +1,4 @@
-# Watchdoc — PRD
+# Watchdock — PRD
 *(working name — a GitHub Action that keeps docs and AI-agent instruction files honest)*
 
 **Contest:** NVIDIA GTC Berlin Golden Ticket Developer Contest
@@ -109,7 +109,7 @@ If present, this file's `targets` list replaces auto-detection entirely; `ignore
 | Impact/usefulness | Targets a documented, active failure mode (stale agent instructions, plus classic doc rot) relevant to anyone running agentic coding workflows — including the contest's own audience |
 | Documentation quality | The submission's own README/demo must be exemplary — dogfooding the tool's purpose |
 
-## 11. Benchmark — "Watchdoc-Bench"
+## 11. Benchmark — "Watchdock-Bench"
 
 Winning past entries (e.g. Project Chimera's RALPH loop benchmark, comparing Nemotron-3-Nano-30B-A3B against Claude Sonnet 4.5 on iterations/tokens/test-pass-rate) show that judges respond to a real number, not a claim. This is the equivalent here, scoped to be buildable in about a day since it needs no training — only a fixed eval set and a script that scores pipeline output against ground truth.
 
@@ -144,7 +144,7 @@ Winning past entries (e.g. Project Chimera's RALPH loop benchmark, comparing Nem
 | suhteevah/docsync | General docs, 40+ languages | Deterministic (tree-sitter) | Auto-fix (paid tier) | Local/CI | No | No |
 | CodeRabbit | Whole PR review | LLM, doc-check is one minor feature | Minor feature among many | GitHub, PR-based | No | No |
 | Cursor Bugbot / autogit | Code bugs (not docs) | LLM / N/A | Auto-commit to branch, attribution trailers | GitHub / local | No | N/A |
-| **Watchdoc (ours)** | Docs + agent-instruction files | LLM semantic reasoning via NeMo Agent Toolkit | Suggestion (human) or auto-commit (agent-authored), origin-aware | GitHub, every PR | **Yes** | **Yes** |
+| **Watchdock (ours)** | Docs + agent-instruction files | LLM semantic reasoning via NeMo Agent Toolkit | Suggestion (human) or auto-commit (agent-authored), origin-aware | GitHub, every PR | **Yes** | **Yes** |
 
 **The gap this closes:** every agent-instruction-file tool is either deterministic (Evidoc, config-drift-checker) or locked inside a single client's session rather than a CI gate everyone sees (CLAUDE.md Auto-Updater). Every semantic/LLM doc tool targets human docs only. Nobody covers both target types with one mechanism, nobody makes delivery origin-aware, nobody uses NVIDIA's stack, and nobody publishes a benchmark. The honest claim is the *combination*, not any single piece in isolation.
 
@@ -155,7 +155,7 @@ Winning past entries (e.g. Project Chimera's RALPH loop benchmark, comparing Nem
 | Day 1 | NeMo Agent Toolkit installed, NIM API key working, minimal `tool_calling_agent` YAML workflow makes one successful round-trip call. GitHub Action skeleton triggers on PR and can read the diff. |
 | Day 2 | Target discovery (auto-detect instruction files + docs + `.still.yml` override), raw-text claim extraction wired as a toolkit tool. Detector agent runs end-to-end on one hand-crafted semantic-drift case per target type. |
 | Day 3 | Fix-Writer agent, PR-origin detection (commit trailer parsing), and both delivery paths (suggestion comment / direct commit) via GitHub API. Test against 2-3 real sample PRs of each origin type. |
-| Day 4 | Build the Watchdoc-Bench eval set (~20-25 cases, split per Section 11), implement the deterministic baseline + single-prompt variant, run all three approaches, compute metrics. Use results to tune prompts if false-positive rate is high. |
+| Day 4 | Build the Watchdock-Bench eval set (~20-25 cases, split per Section 11), implement the deterministic baseline + single-prompt variant, run all three approaches, compute metrics. Use results to tune prompts if false-positive rate is high. |
 | Day 5 | Run the bonus model-comparison, finalize README with the benchmark table and competitive matrix, record demo video, publish the open-source repo, submit with #NVIDIAGTC + judge tag. |
 
 ## 14. Risks / open questions

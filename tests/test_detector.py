@@ -1,17 +1,17 @@
-"""The NAT adapter is a thin shell over watchdoc.pipeline; these tests only
+"""The NAT adapter is a thin shell over watchdock.pipeline; these tests only
 check that its config defaults come from the core package rather than being
 retyped here."""
 import pytest
 
-pytest.importorskip("nat", reason="watchdoc_detector requires nvidia-nat")
+pytest.importorskip("nat", reason="watchdock_detector requires nvidia-nat")
 
-from watchdoc import nim_client  # noqa: E402
-from watchdoc.claims import DEFAULT_ENSEMBLE_SIZE  # noqa: E402
-from watchdoc_detector.watchdoc_detector import WatchdocDetectorFunctionConfig  # noqa: E402
+from watchdock import nim_client  # noqa: E402
+from watchdock.claims import DEFAULT_ENSEMBLE_SIZE  # noqa: E402
+from watchdock_detector.watchdock_detector import WatchdockDetectorFunctionConfig  # noqa: E402
 
 
 def test_config_defaults_mirror_the_core_defaults():
-    config = WatchdocDetectorFunctionConfig()
+    config = WatchdockDetectorFunctionConfig()
 
     assert config.model == nim_client.DEFAULT_SETTINGS.model
     assert config.temperature == nim_client.DEFAULT_SETTINGS.temperature

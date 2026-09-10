@@ -1,7 +1,7 @@
 import pytest
 
-from watchdoc.errors import ConfigError
-from watchdoc.targets import discover_targets
+from watchdock.errors import ConfigError
+from watchdock.targets import discover_targets
 
 
 def test_discover_targets_empty_repo(tmp_path):
@@ -31,11 +31,11 @@ def test_discover_targets_docs_directory(tmp_path):
     assert "docs/api.md" in result
 
 
-def test_watchdoc_yml_overrides_auto_detect(tmp_path):
+def test_watchdock_yml_overrides_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
     (tmp_path / "CONTRIBUTING.md").write_text("# contributing")
-    (tmp_path / ".watchdoc.yml").write_text(
+    (tmp_path / ".watchdock.yml").write_text(
         "targets:\n  - CONTRIBUTING.md\n"
     )
 
@@ -45,10 +45,10 @@ def test_watchdoc_yml_overrides_auto_detect(tmp_path):
     assert result == ["CONTRIBUTING.md"]
 
 
-def test_watchdoc_yml_ignore_subtracts_from_auto_detect(tmp_path):
+def test_watchdock_yml_ignore_subtracts_from_auto_detect(tmp_path):
     (tmp_path / "AGENTS.md").write_text("# agents")
     (tmp_path / "README.md").write_text("# readme")
-    (tmp_path / ".watchdoc.yml").write_text(
+    (tmp_path / ".watchdock.yml").write_text(
         "ignore:\n  - README.md\n"
     )
 
@@ -58,8 +58,8 @@ def test_watchdoc_yml_ignore_subtracts_from_auto_detect(tmp_path):
     assert "README.md" not in result
 
 
-def test_watchdoc_yml_targets_pointing_at_nonexistent_file_is_dropped(tmp_path):
-    (tmp_path / ".watchdoc.yml").write_text(
+def test_watchdock_yml_targets_pointing_at_nonexistent_file_is_dropped(tmp_path):
+    (tmp_path / ".watchdock.yml").write_text(
         "targets:\n  - DOES_NOT_EXIST.md\n"
     )
 
@@ -81,7 +81,7 @@ def test_binary_file_under_docs_is_not_a_target(tmp_path):
 
 def test_explicit_target_that_is_binary_is_dropped(tmp_path):
     (tmp_path / "logo.bin").write_bytes(b"\x00\x01\x02\xff\xfe")
-    (tmp_path / ".watchdoc.yml").write_text("targets:\n  - logo.bin\n")
+    (tmp_path / ".watchdock.yml").write_text("targets:\n  - logo.bin\n")
 
     assert discover_targets(str(tmp_path)) == []
 
@@ -111,27 +111,27 @@ def test_cursor_rules_directory_yields_its_rule_files(tmp_path):
 
 
 
-def test_watchdoc_yml_ignore_accepts_globs(tmp_path):
+def test_watchdock_yml_ignore_accepts_globs(tmp_path):
     docs = tmp_path / "docs"
     docs.mkdir()
     (docs / "api.md").write_text("# api")
     (docs / "changelog.md").write_text("# changelog")
     (tmp_path / "README.md").write_text("# readme")
-    (tmp_path / ".watchdoc.yml").write_text("ignore:\n  - docs/*\n")
+    (tmp_path / ".watchdock.yml").write_text("ignore:\n  - docs/*\n")
 
     assert discover_targets(str(tmp_path)) == ["README.md"]
 
 
-def test_watchdoc_yml_with_a_scalar_targets_value_is_a_config_error(tmp_path):
+def test_watchdock_yml_with_a_scalar_targets_value_is_a_config_error(tmp_path):
     """A bare string would otherwise iterate as single characters."""
-    (tmp_path / ".watchdoc.yml").write_text("targets: README.md\n")
+    (tmp_path / ".watchdock.yml").write_text("targets: README.md\n")
 
     with pytest.raises(ConfigError, match="'targets' must be a list"):
         discover_targets(str(tmp_path))
 
 
-def test_watchdoc_yml_that_is_not_a_mapping_is_a_config_error(tmp_path):
-    (tmp_path / ".watchdoc.yml").write_text("- README.md\n")
+def test_watchdock_yml_that_is_not_a_mapping_is_a_config_error(tmp_path):
+    (tmp_path / ".watchdock.yml").write_text("- README.md\n")
 
     with pytest.raises(ConfigError, match="must be a mapping"):
         discover_targets(str(tmp_path))

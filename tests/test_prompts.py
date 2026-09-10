@@ -1,4 +1,4 @@
-from watchdoc.prompts import check_claim_prompt, draft_fix_prompt, extract_claims_prompt
+from watchdock.prompts import check_claim_prompt, draft_fix_prompt, extract_claims_prompt
 
 
 def test_extract_claims_prompt_has_no_leaked_indentation():

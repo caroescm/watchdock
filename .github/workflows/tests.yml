@@ -20,7 +20,7 @@ jobs:
       - name: Install both packages with the action's pinned constraints
         run: |
           set -euo pipefail
-          pip install -c constraints.txt -e ".[dev]" -e watchdoc_detector
+          pip install -c constraints.txt -e ".[dev]" -e watchdock_detector
       - name: Lint
         run: ruff check .
       - name: Test

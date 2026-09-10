@@ -1,6 +1,6 @@
 """
 Runs every case in cases.py through three approaches (deterministic baseline,
-single-prompt LLM, full Watchdoc pipeline) and reports precision/recall/F1 for each.
+single-prompt LLM, full Watchdock pipeline) and reports precision/recall/F1 for each.
 """
 import sys
 import time
@@ -8,9 +8,9 @@ import time
 from baseline import deterministic_check
 from cases import CASES
 from single_prompt import single_prompt_check
-from watchdoc.claims import check_claims_against_targets, extract_claims
-from watchdoc.models import Finding
-from watchdoc.parsing import lines_overlap
+from watchdock.claims import check_claims_against_targets, extract_claims
+from watchdock.models import Finding
+from watchdock.parsing import lines_overlap
 
 
 def line_matches(expected_line: str | None, findings: list[Finding]) -> bool:
@@ -51,7 +51,7 @@ def compute_metrics(scores: list[str]) -> dict[str, float]:
 
 
 def full_pipeline_check(diff, target_path: str, target_content: str) -> list[Finding]:
-    """Watchdoc's detection stage on one target: claim extraction, then the
+    """Watchdock's detection stage on one target: claim extraction, then the
     per-claim ensemble. Raises if every claim failed, since then there is
     genuinely no result to score."""
     claims = extract_claims(diff)

@@ -1,4 +1,4 @@
-"""Every environment variable Watchdoc reads, and the one place that reads them.
+"""Every environment variable Watchdock reads, and the one place that reads them.
 
 Required:
     GITHUB_TOKEN        API token for reading the PR and posting results.
@@ -12,11 +12,11 @@ Optional:
                         ``repo_root`` when the workflow config leaves it unset.
 
 Everything else an operator can tune is a field on the NAT workflow config
-(see ``watchdoc_detector/configs/config.yml``), not an environment variable.
+(see ``watchdock_detector/configs/config.yml``), not an environment variable.
 """
 import os
 
-from watchdoc.errors import ConfigError
+from watchdock.errors import ConfigError
 
 
 def require(name: str, hint: str) -> str:

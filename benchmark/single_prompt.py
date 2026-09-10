@@ -3,10 +3,10 @@ Single-prompt variant: one NIM call does the whole job (find + explain drift)
 at once, with no separate extract_claims / check_claim_against_target steps.
 Isolates whether the two-step pipeline actually matters.
 """
-from watchdoc.diff import format_diff
-from watchdoc.models import DiffEntry, Finding
-from watchdoc.nim_client import chat_completion
-from watchdoc.parsing import parse_findings
+from watchdock.diff import format_diff
+from watchdock.models import DiffEntry, Finding
+from watchdock.nim_client import chat_completion
+from watchdock.parsing import parse_findings
 
 
 def single_prompt_check(diff: list[DiffEntry], target_path: str, target_content: str) -> list[Finding]:

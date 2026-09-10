@@ -2,7 +2,7 @@
 tests import them as a normal module instead of importing conftest."""
 import pytest
 
-from watchdoc import nim_client
+from watchdock import nim_client
 
 
 @pytest.fixture(autouse=True)

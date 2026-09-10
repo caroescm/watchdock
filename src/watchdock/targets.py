@@ -1,6 +1,6 @@
 """Which files in the checked-out repository are doc or instruction targets.
 
-Auto-detection covers the conventional names; a ``.watchdoc.yml`` at the
+Auto-detection covers the conventional names; a ``.watchdock.yml`` at the
 repository root can replace the list (``targets``) or subtract from it
 (``ignore``). Both keys take fnmatch globs, the same syntax as the diff
 filter in diff.py.
@@ -11,7 +11,7 @@ import os
 
 import yaml
 
-from watchdoc.errors import ConfigError
+from watchdock.errors import ConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ DEFAULT_DOC_DIRS = [
 # conf.py under docs/ is not a target.
 DOC_EXTENSIONS = {".md", ".mdx", ".markdown", ".rst", ".txt", ".adoc"}
 
-CONFIG_FILENAME = ".watchdoc.yml"
+CONFIG_FILENAME = ".watchdock.yml"
 
 
 def discover_targets(repo_root: str) -> list[str]:
@@ -80,7 +80,7 @@ def _is_text_file(path: str, sample_bytes: int = 8192) -> bool:
 
 
 def _load_config(repo_root: str) -> dict[str, list[str]]:
-    """The validated ``.watchdoc.yml`` contents, or {} when there is none.
+    """The validated ``.watchdock.yml`` contents, or {} when there is none.
     Each of ``targets`` and ``ignore``, when present, must be a list of
     strings; anything else is a ConfigError rather than a silent misread
     (a bare string would otherwise iterate as characters)."""

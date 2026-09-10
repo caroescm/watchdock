@@ -1,6 +1,6 @@
 from fakes import FakeComment, FakePR
-from watchdoc.models import Delivery, Finding, FindingType, Origin, SummaryOutcome
-from watchdoc.report import (
+from watchdock.models import Delivery, Finding, FindingType, Origin, SummaryOutcome
+from watchdock.report import (
     DELIVERY_LABELS,
     SUMMARY_MARKER,
     build_run_summary,

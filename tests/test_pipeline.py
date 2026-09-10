@@ -7,10 +7,10 @@ from unittest.mock import patch
 import pytest
 
 from fakes import FakePR, FakeRepo
-from watchdoc import pipeline
-from watchdoc.errors import PipelineError
-from watchdoc.models import Delivery, DeliveryMode, Finding, FindingType, Origin
-from watchdoc.pipeline import (
+from watchdock import pipeline
+from watchdock.errors import PipelineError
+from watchdock.models import Delivery, DeliveryMode, Finding, FindingType, Origin
+from watchdock.pipeline import (
     RunOptions,
     deliver_target,
     parse_pr_number,

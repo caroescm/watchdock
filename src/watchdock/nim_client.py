@@ -1,4 +1,4 @@
-"""Every model call in Watchdoc goes through one NimClient.
+"""Every model call in Watchdock goes through one NimClient.
 
 A NimClient owns its settings, its concurrency gate and its lazily built
 OpenAI-compatible client, so a run's configuration is one immutable object
@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 import openai
 from openai import OpenAI
 
-from watchdoc import env
+from watchdock import env
 
 logger = logging.getLogger(__name__)
 

@@ -1,4 +1,4 @@
-"""Builds and posts Watchdoc's per-run summary comment on the PR.
+"""Builds and posts Watchdock's per-run summary comment on the PR.
 
 Every run maintains exactly one summary comment: created on the first run,
 edited in place on every run after that (found again via an invisible HTML
@@ -12,11 +12,11 @@ the same markdown as the workflow's output.
 """
 import logging
 
-from watchdoc.models import Delivery, Finding, Origin, SummaryOutcome
+from watchdock.models import Delivery, Finding, Origin, SummaryOutcome
 
 logger = logging.getLogger(__name__)
 
-SUMMARY_MARKER = "<!-- watchdoc-run-summary -->"
+SUMMARY_MARKER = "<!-- watchdock-run-summary -->"
 
 DELIVERY_LABELS: dict[Delivery, str] = {
     Delivery.COMMITTED: "🔧 fix committed to this branch",
@@ -53,7 +53,7 @@ def build_run_summary(
 
     if not targets:
         headline = ("ℹ️ **No target files found** — this repository has no README, docs "
-                    "directory or agent-instruction file to check, and no `.watchdoc.yml` naming any.")
+                    "directory or agent-instruction file to check, and no `.watchdock.yml` naming any.")
     elif not claims:
         headline = ("✅ **No doc-relevant changes** — nothing in this diff could "
                     "affect docs or agent-instruction files.")
@@ -66,7 +66,7 @@ def build_run_summary(
                     f"fixes delivered below.")
 
     lines = [
-        "## 🛰️ Watchdoc — docs & agent-instruction drift check",
+        "## 🛰️ Watchdock — docs & agent-instruction drift check",
         "",
         headline,
         "",

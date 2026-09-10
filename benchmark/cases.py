@@ -1,10 +1,10 @@
 """
-AgentTruth-Bench / Watchdoc-Bench eval cases.
+AgentTruth-Bench / Watchdock-Bench eval cases.
 
 Each case is one hypothetical PR against a small Node project whose two doc
 files live in benchmark/sample_repo/ (the code the diffs touch is implied by
 the patches, not checked in). `diff` is a list of DiffEntry objects, the same
-shape watchdoc.github_api.get_diff() returns.
+shape watchdock.github_api.get_diff() returns.
 `target_path` + `target_content_before` is the target file's content as it
 exists BEFORE any fix — i.e. the (possibly now-stale) state we're checking.
 
@@ -17,7 +17,7 @@ exists BEFORE any fix — i.e. the (possibly now-stale) state we're checking.
 
 import os
 
-from watchdoc.models import DiffEntry
+from watchdock.models import DiffEntry
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 

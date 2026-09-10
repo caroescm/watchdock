@@ -1,5 +1,5 @@
 from run_eval import compute_metrics, score_case
-from watchdoc.models import Finding
+from watchdock.models import Finding
 
 
 def _case(drift, stale_line=None):

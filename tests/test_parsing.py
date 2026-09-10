@@ -1,5 +1,5 @@
-from watchdoc.models import Finding, FindingType
-from watchdoc.parsing import lines_overlap, normalize_line, parse_blocks, parse_claims, parse_findings
+from watchdock.models import Finding, FindingType
+from watchdock.parsing import lines_overlap, normalize_line, parse_blocks, parse_claims, parse_findings
 
 
 def test_parse_findings_none_response():

@@ -1,7 +1,7 @@
 """Turning a PR diff into the text the claim-extraction prompt sees."""
 import fnmatch
 
-from watchdoc.models import DiffEntry
+from watchdock.models import DiffEntry
 
 # Files that are never informative for doc or instruction drift. They add
 # token volume to claim extraction without ever being the kind of change

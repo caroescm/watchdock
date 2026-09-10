@@ -1,6 +1,6 @@
 from fakes import FakePR, FakeRepo
-from watchdoc.fixes import apply_fix, commit_fixes_to_branch, find_line_number, is_noop_fix, post_pr_suggestion
-from watchdoc.models import Delivery, Finding, FindingType
+from watchdock.fixes import apply_fix, commit_fixes_to_branch, find_line_number, is_noop_fix, post_pr_suggestion
+from watchdock.models import Delivery, Finding, FindingType
 
 
 def _finding(line, fix, kind=FindingType.SEMANTIC_STALENESS, reason="Code now uses httpx."):
