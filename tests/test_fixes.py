@@ -26,11 +26,55 @@ def test_apply_fix_replaces_the_first_matching_line_only():
 
 
 def test_apply_fix_never_matches_a_fragment_inside_a_longer_line():
-    """A quoted fragment must not edit a different line that happens to
-    contain it; that is the path that commits."""
+    """A quoted mid-sentence fragment must not edit a different line that
+    happens to contain it; that is the path that commits, and "use requests"
+    rewritten inside "Do not use requests" would invert the meaning."""
     content = "Do not use `requests` here.\nuse `requests`\n"
     assert apply_fix(content, "use `requests`", "use `httpx`") == "Do not use `requests` here.\nuse `httpx`\n"
     assert apply_fix("Do not use `requests` here.\n", "use `requests`", "use `httpx`") is None
+
+
+LIVE_LINE = ("1. **Code-based sessions** (mesa directiva): token stored in `localStorage` under "
+             "`mun_session_token`, validated against the `active_sessions` Supabase table. "
+             "Heartbeat refreshes `last_seen_at` every 5 minutes.\n")
+
+
+def test_apply_fix_matches_a_quote_that_dropped_the_list_marker_and_bold():
+    """Seen live: the model quoted a numbered, bolded list item without the
+    "1." and the "**", so the verbatim match failed and a correct fix was
+    never committed. The edit is applied inside the real line, keeping the
+    decoration the quote left out."""
+    quote = ("Code-based sessions (mesa directiva): token stored in `localStorage` under `mun_session_token`, "
+             "validated against the `active_sessions` Supabase table. Heartbeat refreshes `last_seen_at` "
+             "every 5 minutes.")
+    fix = quote.replace("every 5 minutes", "every 2 minutes")
+
+    result = apply_fix("# Auth\n\n" + LIVE_LINE + "2. **Supabase Auth**\n", quote, fix)
+
+    assert result == "# Auth\n\n" + LIVE_LINE.replace("every 5 minutes", "every 2 minutes") + "2. **Supabase Auth**\n"
+    assert find_line_number(LIVE_LINE, quote) == 1
+
+
+def test_apply_fix_matches_a_whole_sentence_that_is_unique_in_the_file():
+    """Also seen live: only the stale sentence of a longer line was quoted."""
+    result = apply_fix(LIVE_LINE, "Heartbeat refreshes `last_seen_at` every 5 minutes.",
+                       "Heartbeat refreshes `last_seen_at` every 2 minutes.")
+
+    assert result == LIVE_LINE.replace("every 5 minutes", "every 2 minutes")
+
+
+def test_apply_fix_refuses_a_sentence_that_appears_in_more_than_one_line():
+    content = "Intro. Heartbeat is 5 minutes.\nMore. Heartbeat is 5 minutes.\n"
+
+    assert apply_fix(content, "Heartbeat is 5 minutes.", "Heartbeat is 2 minutes.") is None
+
+
+def test_apply_fix_replaces_the_whole_matched_text_when_the_edit_is_ambiguous():
+    """Two places in the span could take the minimal edit, so the span is
+    replaced by the fix rather than guessing which one."""
+    result = apply_fix("- 5 and 5\n", "5 and 5", "5 and 2")
+
+    assert result == "- 5 and 2\n"
 
 
 def test_apply_fix_keeps_indentation_and_line_ending():
@@ -158,6 +202,22 @@ def test_post_pr_suggestion_includes_kind_and_reason_with_suggestion_fence():
     assert "semantic staleness" in posted["body"]
     assert "Code now uses httpx." in posted["body"]
     assert "```suggestion\nAlways use `httpx` for HTTP calls.\n```" in posted["body"]
+
+
+def test_post_pr_suggestion_suggests_the_whole_corrected_line_for_a_sentence_quote():
+    """A suggestion block replaces the entire line, so when the model quoted
+    one sentence the block must carry the full corrected line, not just the
+    rewritten sentence."""
+    pr = FakePR()
+    finding = _finding("Heartbeat refreshes `last_seen_at` every 5 minutes.",
+                       "Heartbeat refreshes `last_seen_at` every 2 minutes.")
+
+    result = post_pr_suggestion(pr, "CLAUDE.md", "# Auth\n" + LIVE_LINE, finding)
+
+    assert result == Delivery.SUGGESTION_POSTED
+    assert pr.review_comments[0]["line"] == 2
+    expected = LIVE_LINE.replace("every 5 minutes", "every 2 minutes").rstrip("\n")
+    assert f"```suggestion\n{expected}\n```" in pr.review_comments[0]["body"]
 
 
 def test_post_pr_suggestion_leaves_an_unlocated_line_to_the_summary():

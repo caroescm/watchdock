@@ -1,18 +1,43 @@
 """Drafting a fix for a finding and getting it onto the PR.
 
-Both delivery paths locate the stale line the same way, ``_line_index``: a
-whole-line match with surrounding whitespace ignored. A quoted fragment is
-never matched inside a longer, different line, and a fix identical to the
-stale line is refused, so nothing here can commit or suggest an edit that
-wasn't asked for.
+Both delivery paths locate the stale line the same way, ``locate``: the
+quoted line as a whole; failing that, the same text once the markdown
+decoration the model routinely drops from a quote (a list marker, **bold**)
+is ignored; failing that, one whole sentence of a line, if exactly one line
+in the file contains it. A fragment that starts mid-sentence is never
+matched ("use requests" must not edit "Do not use requests"), and a fix
+identical to the stale line is refused, so nothing here can commit or
+suggest an edit that wasn't asked for.
 """
 import logging
+import re
+from dataclasses import dataclass
 
 from watchdock import nim_client
 from watchdock.models import Delivery, Finding
 from watchdock.prompts import draft_fix_prompt
 
 logger = logging.getLogger(__name__)
+
+# Leading markdown decoration the model tends to leave out when it quotes a
+# line: indentation, a list marker ("- ", "* ", "1. ", "1) "), a blockquote
+# ">" or a heading "#". Used only to find where a line's own text starts.
+_LEADING_DECORATION = re.compile(r"^\s*(?:(?:[-*+]|\d+[.)])\s+|>\s*|#{1,6}\s+)?")
+# Emphasis markers the model also drops (**bold**, _italic_). Stripped from
+# both sides for comparison only; the file's own text is never altered.
+_EMPHASIS = re.compile(r"[*_]+")
+# Where one sentence ends and the next begins inside a line.
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+
+
+@dataclass(frozen=True)
+class Located:
+    """Where a quoted stale line sits: the line's index and the span of that
+    line the quote covers (the whole line, its text without decoration, or
+    one or more whole sentences)."""
+    index: int
+    start: int
+    end: int
 
 
 def draft_fix(target_path: str, stale_line: str, reason: str) -> str:
@@ -23,22 +48,88 @@ def draft_fix(target_path: str, stale_line: str, reason: str) -> str:
     return nim_client.chat_completion(prompt, enable_thinking=False).strip()
 
 
-def _line_index(lines: list[str], stale_line: str) -> int | None:
-    """0-based index of the first line equal to stale_line once both are
-    stripped, or None."""
+def _comparable(text: str) -> str:
+    return " ".join(_EMPHASIS.sub("", text).lower().split())
+
+
+def _text_span(line: str) -> tuple[int, int]:
+    """Start/end of a line's own text: after indentation and any list, quote
+    or heading marker; before trailing whitespace and the line ending."""
+    start = _LEADING_DECORATION.match(line).end()
+    return start, max(start, len(line.rstrip()))
+
+
+def _sentence_spans(line: str, start: int, end: int) -> list[tuple[int, int]]:
+    """Every span of one or more consecutive whole sentences in
+    line[start:end], excluding the full span itself."""
+    breaks = list(_SENTENCE_BREAK.finditer(line, start, end))
+    starts = [start] + [m.end() for m in breaks]
+    ends = [m.start() for m in breaks] + [end]
+    return [(b, e) for b in starts for e in ends if b < e and (b, e) != (start, end)]
+
+
+def locate(lines: list[str], stale_line: str) -> Located | None:
+    """Where ``stale_line`` is in ``lines``, or None.
+
+    In order: the first line equal to the quote once both are stripped; the
+    first line whose text equals the quote ignoring markdown decoration; a
+    whole-sentence fragment of a line, only if exactly one line in the file
+    has it. Anything else is a refusal to guess."""
     wanted = stale_line.strip()
     if not wanted:
         return None
     for i, line in enumerate(lines):
         if line.strip() == wanted:
-            return i
-    return None
+            return Located(i, len(line) - len(line.lstrip()), len(line.rstrip()))
+
+    target = _comparable(_LEADING_DECORATION.sub("", wanted, count=1))
+    if not target:
+        return None
+    fragments: list[Located] = []
+    for i, line in enumerate(lines):
+        start, end = _text_span(line)
+        if _comparable(line[start:end]) == target:
+            return Located(i, start, end)
+        fragments += [Located(i, b, e) for b, e in _sentence_spans(line, start, end)
+                      if _comparable(line[b:e]) == target]
+    return fragments[0] if len(fragments) == 1 else None
+
+
+def _common_edges(a: str, b: str) -> tuple[int, int]:
+    """Lengths of the common prefix and common suffix of a and b, the two
+    never overlapping."""
+    limit = min(len(a), len(b))
+    prefix = 0
+    while prefix < limit and a[prefix] == b[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < limit - prefix and a[-1 - suffix] == b[-1 - suffix]:
+        suffix += 1
+    return prefix, suffix
+
+
+def _rewrite(line: str, at: Located, stale_line: str, fix_text: str) -> str:
+    """``line`` with the located span corrected. The smallest edit that turns
+    the quote into the fix is applied where it occurs inside the span, so
+    decoration the model dropped from its quote survives in the file; when
+    that edit can't be placed unambiguously, the whole span becomes the fix."""
+    quote, fix = stale_line.strip(), fix_text.strip()
+    old = line[at.start:at.end]
+    prefix, suffix = _common_edges(quote, fix)
+    if quote[prefix:len(quote) - suffix]:
+        for context in (24, 12, 6, 0):
+            lo, hi = max(0, prefix - context), suffix - context
+            needle = quote[lo:len(quote) - hi] if hi > 0 else quote[lo:]
+            replacement = fix[lo:len(fix) - hi] if hi > 0 else fix[lo:]
+            if needle and old.count(needle) == 1:
+                return line[:at.start] + old.replace(needle, replacement) + line[at.end:]
+    return line[:at.start] + fix + line[at.end:]
 
 
 def find_line_number(file_content: str, stale_line: str) -> int | None:
     """1-based line number of stale_line inside file_content, or None."""
-    index = _line_index(file_content.splitlines(), stale_line)
-    return None if index is None else index + 1
+    at = locate(file_content.splitlines(), stale_line)
+    return None if at is None else at.index + 1
 
 
 def is_noop_fix(stale_line: str, fix_text: str) -> bool:
@@ -47,17 +138,14 @@ def is_noop_fix(stale_line: str, fix_text: str) -> bool:
 
 
 def apply_fix(content: str, stale_line: str, fix_text: str) -> str | None:
-    """Replaces the whole first line matching stale_line with fix_text,
-    keeping that line's indentation and line ending. Returns the new content,
-    or None if no line matches; the caller must refuse to guess."""
+    """Corrects the located line in ``content`` (see ``locate``), keeping its
+    indentation, decoration and line ending. Returns the new content, or None
+    if the line can't be located; the caller must refuse to guess."""
     lines = content.splitlines(keepends=True)
-    index = _line_index(lines, stale_line)
-    if index is None:
+    at = locate(lines, stale_line)
+    if at is None:
         return None
-    old = lines[index]
-    indent = old[:len(old) - len(old.lstrip())]
-    ending = "\n" if old.endswith("\n") else ""
-    lines[index] = f"{indent}{fix_text.strip()}{ending}"
+    lines[at.index] = _rewrite(lines[at.index], at, stale_line, fix_text)
     return "".join(lines)
 
 
@@ -84,15 +172,20 @@ def post_pr_suggestion(pr, target_path: str, target_content: str, finding: Findi
     if finding.fix is None or is_noop_fix(finding.line, finding.fix):
         return Delivery.NOT_APPLIED_NO_CHANGE
 
-    line_number = find_line_number(target_content, finding.line)
-    if line_number is None:
+    lines = target_content.splitlines()
+    at = locate(lines, finding.line)
+    if at is None:
         return Delivery.IN_SUMMARY
+    line_number = at.index + 1
+    # A suggestion replaces the whole line, so it carries the corrected line
+    # (decoration and all), not just the fix for the part the model quoted.
+    corrected = _rewrite(lines[at.index], at, finding.line, finding.fix)
 
     try:
         # The suggestion fence is built by hand (instead of as_suggestion=True)
         # so the comment can carry the explanation above the one-click fix.
         pr.create_review_comment(
-            body=f"{_explanation(target_path, finding)}\n\n```suggestion\n{finding.fix}\n```",
+            body=f"{_explanation(target_path, finding)}\n\n```suggestion\n{corrected}\n```",
             commit=pr.head.sha,
             path=target_path,
             line=line_number,
